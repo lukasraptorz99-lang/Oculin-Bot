@@ -16,6 +16,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ID del canal principal donde Oculin enviará los mensajes automáticos
 TEXT_CHANNEL_ID = 1546286007308255239  # ID de tu canal de texto principal
 
+# Enlace limpio del GIF de Lükaa con audífonos
+LUKAA_GIF_URL = "https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&"
+
 # Lista de frases atmosféricas y de terror
 ATMOSPHERIC_MESSAGES = [
     "chillido extraño",
@@ -63,7 +66,7 @@ async def on_ready():
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
 
-    # Forzamos la búsqueda del canal directamente en la API de Discord para enviar "se despierta"
+    # Forzamos la búsqueda del canal directamente en la API para enviar "se despierta"
     try:
         channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
@@ -79,24 +82,20 @@ async def on_ready():
 # ---------------- EVENTO DE MENSAJES (MENCIONES Y REACCIONES) ----------------
 @bot.event
 async def on_message(message):
-    # Evitamos que el bot se responda a sí mismo
     if message.author == bot.user:
         return
 
     # Si alguien etiqueta a Oculin en el mensaje
     if bot.user.mentioned_in(message):
         try:
-            # Busca el emoji personalizado llamado "ahh" en el servidor
             emoji = discord.utils.get(message.guild.emojis, name="ahh")
             if emoji:
                 await message.add_reaction(emoji)
             else:
-                # Respaldo por si el emoji no está disponible
                 await message.add_reaction("👀")
         except Exception as e:
             print(f"No se pudo reaccionar al mensaje: {e}")
 
-    # Permite que los comandos sigan funcionando correctamente
     await bot.process_commands(message)
 
 # ---------------- BOTÓN INTERACTIVO PARA EL JUEGO ----------------
@@ -116,4 +115,62 @@ async def jugar(interaction: discord.Interaction, nombre: str):
         
         embed = discord.Embed(
             title="Lükaa ocular V13",
+            description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
+            color=0xaa0000
+        )
         
+        embed.set_thumbnail(url=LUKAA_GIF_URL)
+        embed.set_footer(text="Sinteks Labs / Oculin System")
+        
+        await interaction.response.send_message(embed=embed, view=JuegoView(url_juego))
+    else:
+        await interaction.response.send_message(
+            f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**. ¡Prueba escribiendo *Lükaa Ocular V13*!",
+            ephemeral=True
+        )
+
+# ---------------- APAGADO ORDENADO (SHUTDOWN) ----------------
+async def graceful_shutdown(signal_name):
+    print(f"Recibida señal {signal_name}, apagando de forma ordenada...")
+    try:
+        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+        if channel:
+            await channel.send("se duerme")
+            await asyncio.sleep(1)
+    except Exception as e:
+        print(f"No se pudo enviar el mensaje de cierre: {e}")
+    await bot.close()
+    sys.exit(0)
+
+def setup_signals():
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s.name)))
+
+# ---------------- PUNTO DE ENTRADA ----------------
+async def main():
+    token = os.environ.get("DISCORD_TOKEN")
+    if not token:
+        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
+        return
+
+    if sys.platform != "win32":
+        setup_signals()
+
+    web_task = asyncio.create_task(start_web_server())
+    
+    try:
+        await bot.start(token)
+    except Exception as e:
+        print(f"Error al iniciar el bot: {e}")
+    finally:
+        try:
+            channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+            if channel:
+                await channel.send("se duerme")
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
