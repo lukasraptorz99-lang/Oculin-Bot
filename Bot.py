@@ -25,12 +25,15 @@ estado_mascota = {
     "felicidad": 50    # De 0 (triste/enojado) a 100 (muy feliz)
 }
 
-# Lista de frases atmosféricas actualizada
+# Lista de frases atmosféricas y eslóganes publicitarios universales (sin la mención)
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
     "*sonido de araña alien*",
     "*Empieza a volar por ahí*",
-    "Wuahhh"
+    "Wuahhh",
+    "¡Recuerde: un Oculin feliz es un hogar seguro a prueba de explosiones planetarias!",
+    "¡La mascota oficial del planeta Oculus directo a tu consola!",
+    "¡No alimente a su Oculin con productos no autorizados o la garantía universal quedará anulada!"
 ]
 
 # ---------------- SERVIDOR WEB PARA RENDER async ----------------
@@ -149,13 +152,13 @@ async def estado(interaction: discord.Interaction):
         saciado = "🔴 ¡Muerto de hambre! (Exige 🥬)"
 
     embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} Estado del Sistema Ocular",
-        description="Diagnóstico actual de la criatura:",
+        title=f"{OCULIN_EMOJI} Estado de la Mascota Universal",
+        description="Diagnóstico actual del modelo sobreviviente del planeta Oculus:",
         color=0x7289da
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
     embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    embed.set_footer(text="Usa /alimentar con 🥬 y /acariciar para cambiar su estado.")
+    embed.set_footer(text="Usa /alimentar con 🥬, /acariciar o compra accesorios en /tienda.")
     
     await interaction.response.send_message(embed=embed)
 
@@ -169,6 +172,31 @@ async def acariciar(interaction: discord.Interaction):
         description="Le das palmaditas con cuidado. Oculin emite un zumbido extrañamente tierno y sus múltiples ojos brillan satisfechos. *¡Su felicidad ha aumentado!*",
         color=0x00aa00
     )
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- COMANDO /TIENDA (CATÁLOGO UNIVERSAL) ----------------
+@bot.tree.command(name="tienda", description="Compra accesorios del catálogo universal para tu Oculin.")
+@app_commands.describe(articulo="Elige qué accesorio deseas adquirir")
+@app_commands.choices(articulo=[
+    app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
+    app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
+    app_commands.Choice(name="Batería nuclear barata", value="bateria")
+])
+async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
+    estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 20)
+    
+    descripciones = {
+        "sombrero": "¡Has equipado un sombrero de copa totalmente invisible! Nadie lo ve, pero Oculin camina con muchísima más elegancia intergaláctica.",
+        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos. Ahora luce un estilo increíblemente moderno y amenazante.",
+        "bateria": "Le das una batería nuclear barata para que juegue. Emana un leve brillo radioactivo, ¡y a Oculin le encanta!"
+    }
+    
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 🛍️ Catálogo Universal Oculus",
+        description=descripciones[articulo.value],
+        color=0xffaa00
+    )
+    embed.set_footer(text="¡Felicidad de la mascota incrementada por compra exitosa!")
     await interaction.response.send_message(embed=embed)
 
 # ---------------- MINIJUEGO /ALIMENTAR (TAMAGOTCHI DE LECHUGA) ----------------
@@ -206,9 +234,8 @@ async def main():
 
     web_task = asyncio.create_task(start_web_server())
     
-    # Iniciamos el bot de forma limpia sin disparar falsos cierres por reconexiones de Render
     await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+            
