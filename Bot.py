@@ -224,7 +224,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ---------------- COMANDOS (PARTE A) ----------------
+# ---------------- COMANDOS ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
         super().__init__()
@@ -300,7 +300,8 @@ async def renombrar(interaction: discord.Interaction, oculin: str):
     )
     embed.set_footer(text="Sinteks Labs / Registro de Anomalías")
     await interaction.response.send_message(embed=embed)
-        @bot.tree.command(name="tienda", description="Compra accesorios, núcleos o un Oculin extra para explorar en paralelo.")
+
+@bot.tree.command(name="tienda", description="Compra accesorios, núcleos o un Oculin extra para explorar en paralelo.")
 @app_commands.describe(articulo="Elige qué accesorio o mejora deseas adquirir")
 @app_commands.choices(articulo=[
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
@@ -480,47 +481,9 @@ async def inventario(interaction: discord.Interaction):
     
     lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
     if len(objetos) > 10:
-        lista_objetos += f" y {len(objetos) - 10} más..."
-
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 🎒 Inventario de {interaction.user.display_name}",
-        description=f"Estado de recursos (Nombre del Oculin: **{nombre_oc}**):",
-        color=0x2ecc71
-    )
-    embed.add_field(name="Créditos", value=f"{creditos} 🪙", inline=True)
-    embed.add_field(name="Oculins en propiedad", value=f"{cantidad_oculins} 🕷️", inline=True)
-    embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
-    embed.add_field(name="Cooldown Actual", value=f"{cd_actual}s", inline=True)
-    embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
-    embed.set_footer(text="Usa /vender, /renombrar o /tienda para gestionar tu imperio.")
-    
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
-@app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
-@app_commands.checks.dynamic_cooldown(calcular_cooldown)
-async def espiar(interaction: discord.Interaction, usuario: discord.Member):
-    nivel_locura = random.randint(0, 100)
-    diagnosticos = [
-        "Apto para la supervivencia en Oculus.",
-        "Riesgo moderado de mutación por radiación cuántica.",
-        "Absolutamente inestable, podría desintegrarse en cualquier momento.",
-        "Posee una extraña resistencia mental a las sombras."
-    ]
-    diagnostico = random.choice(diagnosticos)
-
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 👁️ Escaneo Ocular",
-        description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
-        color=0x9b59b6
-    )
-    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
-    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
-    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
-    
-    await interaction.response.send_message(embed=embed)
-    # ---------------- COMANDO /LORE ----------------
-class LoreSelectView(discord.ui.View):
+        lista_objetos += f" y {len(objetos) - 10} más..
+        # ---------------- COMANDO /LORE ----------------
+        class LoreSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
         self.add_item(LoreSelectDropdown())
@@ -631,4 +594,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-    
+        
