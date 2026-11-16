@@ -484,7 +484,7 @@ async def inventario(interaction: discord.Interaction):
         lista_objetos += f" y {len(objetos) - 10} más.."
         # ---------------- COMANDO /LORE ----------------
         class LoreSelectView(discord.ui.View):
-    def __init__(self):
+     def __init__(self):
         super().__init__(timeout=180)
         self.add_item(LoreSelectDropdown())
 
