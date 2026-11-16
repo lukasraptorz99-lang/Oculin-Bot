@@ -14,7 +14,8 @@ from aiohttp import web
 intents = discord.Intents.default()
 intents.message_content = True
 
-TEXT_CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 1546286007308255234))  
+# Nuevo ID del canal de texto configurado
+TEXT_CHANNEL_ID = 1571922687708897290  
 OCULIN_EMOJI = "🕷️"
 
 # Credenciales de Upstash Redis
@@ -298,14 +299,12 @@ async def main():
         print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
         return
     
-    # 1. Levantar primero el servidor web para que Render detecte el puerto de inmediato
     await start_web_server()
     
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(shutdown()))
 
-    # 2. Iniciar el bot de Discord en paralelo
     async with bot:
         await bot.start(token)
 
