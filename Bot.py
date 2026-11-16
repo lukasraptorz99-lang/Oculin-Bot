@@ -13,19 +13,14 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID del canal principal
 TEXT_CHANNEL_ID = 1546286007308255234  
-
-# Representación visual de Oculin en texto/emoji
 OCULIN_EMOJI = "🕷️"
 
-# Estado interno del Tamagotchi de Oculin
 estado_mascota = {
-    "hambre": 50,      # De 0 (lleno) a 100 (muerto de hambre)
-    "felicidad": 50    # De 0 (triste/enojado) a 100 (muy feliz)
+    "hambre": 50,
+    "felicidad": 50
 }
 
-# Lista de frases atmosféricas y eslóganes publicitarios universales
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
     "*sonido de araña alien*",
@@ -66,7 +61,6 @@ async def atmospheric_loop():
 @bot.event
 async def on_ready():
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
-    
     try:
         synced = await bot.tree.sync()
         print(f"Se sincronizaron {len(synced)} comandos de barra.")
@@ -77,14 +71,12 @@ async def on_ready():
         channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
             await channel.send("*se despierta*")
-            print("Mensaje 'se despierta' enviado exitosamente.")
     except Exception as e:
-        print(f"No se pudo enviar el mensaje 'se despierta': {e}")
+        print(f"No se pudo enviar el mensaje: {e}")
     
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
 
-# ---------------- EVENTO DE MENSAJES (MENCIONES Y REACCIONES) ----------------
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -98,58 +90,41 @@ async def on_message(message):
             else:
                 await message.add_reaction("👀")
         except Exception as e:
-            print(f"No se pudo reaccionar al mensaje: {e}")
+            print(f"Error en reacción: {e}")
 
     await bot.process_commands(message)
 
-# ---------------- BOTÓN INTERACTIVO PARA EL JUEGO ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
         super().__init__()
         self.add_item(discord.ui.Button(label="¿Jugar?", url=url, emoji="🕹️"))
 
-# ---------------- COMANDO /JUGAR ----------------
 @bot.tree.command(name="jugar", description="Inicia un juego interactivo del universo de Oculin.")
 @app_commands.describe(nombre="El nombre del juego que deseas abrir")
 async def jugar(interaction: discord.Interaction, nombre: str):
     juego_lower = nombre.lower().strip()
-    
     if "lükaa" in juego_lower or "luka" in juego_lower:
         url_juego = "https://lukasraptorz99-lang.github.io/"
-        
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} Lükaa ocular V13",
             description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
             color=0xaa0000
         )
         embed.set_footer(text="Sinteks Labs / Oculin System")
-        
         await interaction.response.send_message(embed=embed, view=JuegoView(url_juego))
     else:
         await interaction.response.send_message(
-            f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**. ¡Prueba escribiendo *Lükaa Ocular V13*!",
+            f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**.",
             ephemeral=True
         )
 
-# ---------------- COMANDO /ESTADO (VER TAMAGOTCHI) ----------------
 @bot.tree.command(name="estado", description="Muestra el estado de ánimo y hambre de Oculin.")
 async def estado(interaction: discord.Interaction):
     hambre = estado_mascota["hambre"]
     felicidad = estado_mascota["felicidad"]
     
-    if felicidad > 75:
-        animo = "😁 Muy feliz (¡Cuidado, podría estar planeando algo!)"
-    elif felicidad > 40:
-        animo = "😐 Neutral (Mirando fijamente al vacío)"
-    else:
-        animo = "💀 Deprimido / Enojado (Emite chillidos de frustración)"
-
-    if hambre < 30:
-        saciado = "🟢 Saciado (Comió suficiente lechuga)"
-    elif hambre < 70:
-        saciado = "🟡 Con algo de apetito"
-    else:
-        saciado = "🔴 ¡Muerto de hambre! (Exige 🥬)"
+    animo = "😁 Muy feliz" if felicidad > 75 else ("😐 Neutral" if felicidad > 40 else "💀 Deprimido / Enojado")
+    saciado = "🟢 Saciado" if hambre < 30 else ("🟡 Con algo de apetito" if hambre < 70 else "🔴 ¡Muerto de hambre!")
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} Estado de la criatura",
@@ -158,23 +133,18 @@ async def estado(interaction: discord.Interaction):
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
     embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    embed.set_footer(text="Usa /alimentar con 🥬, /acariciar o cómprale accesorios en /tienda.")
-    
     await interaction.response.send_message(embed=embed)
 
-# ---------------- COMANDO /ACARICIAR ----------------
 @bot.tree.command(name="acariciar", description="Dale mimos a Oculin para aumentar su felicidad.")
 async def acariciar(interaction: discord.Interaction):
     estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 15)
-    
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} ✨ ¡Acariciado!",
-        description="Le das palmaditas con cuidado. Oculin emite un zumbido extrañamente tierno y sus múltiples ojos brillan satisfechos. *¡Su felicidad ha aumentado!*",
+        description="Le das palmaditas con cuidado. *¡Su felicidad ha aumentado!*",
         color=0x00aa00
     )
     await interaction.response.send_message(embed=embed)
 
-# ---------------- COMANDO /TIENDA (CATÁLOGO UNIVERSAL) ----------------
 @bot.tree.command(name="tienda", description="Compra accesorios del catálogo universal para tu Oculin.")
 @app_commands.describe(articulo="Elige qué accesorio deseas adquirir")
 @app_commands.choices(articulo=[
@@ -184,58 +154,48 @@ async def acariciar(interaction: discord.Interaction):
 ])
 async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
     estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 20)
-    
     descripciones = {
-        "sombrero": "¡Has equipado un sombrero de copa totalmente invisible! Nadie lo ve, pero Oculin camina con muchísima más elegancia intergaláctica.",
-        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos. Ahora luce un estilo increíblemente moderno.",
-        "bateria": "Le das una batería nuclear barata para que juegue. Emana un leve brillo radioactivo, ¡y a Oculin le encanta!"
+        "sombrero": "¡Has equipado un sombrero de copa totalmente invisible!",
+        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos.",
+        "bateria": "Le das una batería nuclear barata para que juegue."
     }
-    
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 🛍️ Catálogo de Accesorios Universales",
         description=descripciones[articulo.value],
         color=0xffaa00
     )
-    embed.set_footer(text="¡Felicidad de la mascota incrementada por adquisición exitosa!")
     await interaction.response.send_message(embed=embed)
 
-# ---------------- MINIJUEGO /ALIMENTAR (TAMAGOTCHI DE LECHUGA) ----------------
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
 @app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
 async def alimentar(interaction: discord.Interaction, comida: str):
     comida_limpia = comida.strip()
-    
     if "🥬" in comida_limpia or "lechuga" in comida_limpia.lower():
         estado_mascota["hambre"] = max(0, estado_mascota["hambre"] - 35)
         estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 10)
-        
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} 🍽️ ¡Ñam... ñam!",
-            description="Oculin devora la lechuga con desesperación absoluta y emite un sonido extrañamente feliz. *¡Hambre reducida y energía recuperada!*",
+            description="Oculin devora la lechuga con desesperación absoluta. *¡Hambre reducida!*",
             color=0x00aa00
         )
         await interaction.response.send_message(embed=embed)
     else:
         estado_mascota["felicidad"] = max(0, estado_mascota["felicidad"] - 10)
-        
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ❌ ¡Rechazado!",
-            description=f"Oculin mira fijamente tu **{comida_limpia}**, parpadea sin piedad y lo desintegra con la mirada. *¡Se ha enojado un poco! Exige lechuga (🥬).*",
+            description=f"Oculin desintegra tu **{comida_limpia}** con la mirada. *¡Exige lechuga (🥬)!*",
             color=0xaa0000
         )
         await interaction.response.send_message(embed=embed)
 
-# ---------------- PUNTO DE ENTRADA ----------------
 async def main():
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
-        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
+        print("Error: DISCORD_TOKEN no configurado.")
         return
-
     web_task = asyncio.create_task(start_web_server())
-    
     await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+        
