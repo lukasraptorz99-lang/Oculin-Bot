@@ -1,6 +1,7 @@
 import os
 import asyncio
 import random
+import signal
 import discord
 from discord.ext import commands, tasks
 from aiohttp import web
@@ -19,6 +20,15 @@ TEXT_CHANNEL_ID = 1546286007308255239
 async def on_ready():
     print(f"[DISCORD] ¡Sesión iniciada con éxito como {bot.user}")
     
+    # Enviar un mensaje inmediato al despertar
+    channel = bot.get_channel(TEXT_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send("*se despierta*")
+            print("[TEXTO] Mensaje inicial enviado: *se despierta*")
+        except Exception as e:
+            print(f"[ERROR DE TEXTO] No se pudo enviar el mensaje inicial: {e}")
+
     # Iniciar la tarea de ruidos si no está corriendo
     if not spooky_noises_task.is_running():
         spooky_noises_task.start()
@@ -40,6 +50,20 @@ async def spooky_noises_task():
 async def before_spooky_noises():
     await bot.wait_until_ready()
 
+# Función para manejar el apagado elegante y mandar el mensaje de despedida
+async def shutdown():
+    print("[DISCORD] Apagando el bot...")
+    channel = bot.get_channel(TEXT_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send("*se duerme*")
+            print("[TEXTO] Mensaje de apagado enviado: *se duerme*")
+            # Pequeña pausa para asegurar que Discord procese el mensaje antes de cortar
+            await asyncio.sleep(1)
+        except Exception as e:
+            print(f"[ERROR DE TEXTO] No se pudo enviar el mensaje de apagado: {e}")
+    await bot.close()
+
 # Servidor HTTP dummy para que Render detecte el servicio web activo
 async def handle(request):
     return web.Response(text="Bot de texto activo 24/7 en Render")
@@ -60,8 +84,24 @@ async def main():
     if not token:
         print("[ERROR] No se encontró la variable de entorno DISCORD_TOKEN.")
         return
-    await bot.start(token)
+
+    # Capturar señales de apagado de Render (SIGTERM / SIGINT)
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+        except NotImplementedError:
+            # En algunos sistemas operativos (como Windows local) no soporta signal handlers de la misma forma
+            pass
+
+    try:
+        await bot.start(token)
+    finally:
+        await shutdown()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-  
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+        
