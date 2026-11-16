@@ -14,7 +14,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID del canal principal donde Oculin enviará los mensajes automáticos
-TEXT_CHANNEL_ID = 1546286007308255239  # Cambia esto por el ID de tu canal de texto principal si lo deseas
+TEXT_CHANNEL_ID = 1546286007308255239  # Cambia esto por el ID de tu canal si lo necesitas
 
 # Lista de frases atmosféricas y de terror
 ATMOSPHERIC_MESSAGES = [
@@ -35,7 +35,6 @@ async def start_web_server():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Render asigna dinámicamente un puerto mediante la variable de entorno PORT (por defecto 10000)
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
@@ -54,19 +53,19 @@ async def atmospheric_loop():
 async def on_ready():
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
     
-    # Sincronizamos los comandos de barra (slash commands) con Discord
+    # Sincronizamos los comandos de barra con Discord
     try:
         synced = await bot.tree.sync()
         print(f"Se sincronizaron {len(synced)} comandos de barra.")
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
 
-    # Mensaje de inicio en el canal principal
+    # Enviar el mensaje de encendido al canal principal
     channel = bot.get_channel(TEXT_CHANNEL_ID)
     if channel:
         await channel.send("se despierta")
     
-    # Iniciamos el bucle de mensajes atmosféricos si no está corriendo
+    # Iniciamos el bucle de mensajes atmosféricos
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
 
@@ -85,19 +84,18 @@ async def on_message(message):
             if emoji:
                 await message.add_reaction(emoji)
             else:
-                # Respaldo por si el emoji no está en el servidor
+                # Respaldo por si el emoji no está disponible
                 await message.add_reaction("👀")
         except Exception as e:
             print(f"No se pudo reaccionar al mensaje: {e}")
 
-    # Permite que los comandos sigan funcionando con normalidad
+    # IMPORTANTE: Permite que los comandos sigan funcionando correctamente
     await bot.process_commands(message)
 
 # ---------------- BOTÓN INTERACTIVO PARA EL JUEGO ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
         super().__init__()
-        # Botón interactivo con el texto requerido
         self.add_item(discord.ui.Button(label="¿Jugar?", url=url, emoji="🕹️"))
 
 # ---------------- COMANDO /JUGAR ----------------
@@ -106,17 +104,15 @@ class JuegoView(discord.ui.View):
 async def jugar(interaction: discord.Interaction, nombre: str):
     juego_lower = nombre.lower().strip()
     
-    # Verificamos si el usuario solicita el juego de Lükaa
     if "lükaa" in juego_lower or "luka" in juego_lower:
         url_juego = "https://lukasraptorz99-lang.github.io/"
         
         embed = discord.Embed(
             title="Lükaa ocular V13",
             description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
-            color=0xaa0000  # Color rojo atmosférico
+            color=0xaa0000
         )
         
-        # Agregamos el GIF animado de Lükaa junto a la tarjeta
         embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&")
         embed.set_footer(text="Sinteks Labs / Oculin System")
         
@@ -168,4 +164,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+    
