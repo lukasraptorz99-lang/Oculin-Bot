@@ -13,8 +13,8 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID del canal principal donde Oculin enviará los mensajes automáticos
-TEXT_CHANNEL_ID = 1546286007308255239  # ID de tu canal de texto principal
+# ID del canal principal actualizado
+TEXT_CHANNEL_ID = 1546286007308255234  
 
 # Enlace limpio del GIF de Lükaa con audífonos
 LUKAA_GIF_URL = "https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&"
@@ -173,4 +173,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+                                
