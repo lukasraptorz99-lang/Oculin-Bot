@@ -89,10 +89,13 @@ def obtener_datos_usuario(user_id: str):
             "monedas": 0,
             "objetos": [],
             "nucleos_aceleracion": 0,
-            "cantidad_oculins": 1
+            "cantidad_oculins": 1,
+            "nombre_oculin": "Oculin Principal"
         }
     if "cantidad_oculins" not in inventarios_usuarios[user_id]:
         inventarios_usuarios[user_id]["cantidad_oculins"] = 1
+    if "nombre_oculin" not in inventarios_usuarios[user_id]:
+        inventarios_usuarios[user_id]["nombre_oculin"] = "Oculin Principal"
     return inventarios_usuarios[user_id]
 
 def cooldown_segundos(datos: dict) -> float:
@@ -221,7 +224,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ---------------- COMANDOS ----------------
+# ---------------- COMANDOS (PARTE A) ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
         super().__init__()
@@ -249,13 +252,14 @@ async def estado(interaction: discord.Interaction):
     datos = obtener_datos_usuario(user_id)
     hambre = estado_mascota["hambre"]
     felicidad = estado_mascota["felicidad"]
+    nombre_oc = datos.get("nombre_oculin", "Oculin Principal")
     
     animo = "😁 Muy feliz" if felicidad > 75 else ("😐 Neutral" if felicidad > 40 else "💀 Deprimido / Enojado")
     saciado = "🟢 Saciado" if hambre < 30 else ("🟡 Con algo de apetito" if hambre < 70 else "🔴 ¡Muerto de hambre!")
 
     embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} Estado de la criatura",
-        description=f"Diagnóstico actual (Tienes **{datos.get('cantidad_oculins', 1)}** Oculin(s) bajo tu control):",
+        title=f"{OCULIN_EMOJI} Estado de {nombre_oc}",
+        description=f"Diagnóstico actual (Posees **{datos.get('cantidad_oculins', 1)}** Oculin(s) bajo tu control):",
         color=0x7289da
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
@@ -277,7 +281,26 @@ async def acariciar(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="tienda", description="Compra accesorios, núcleos o un Oculin extra para explorar en paralelo.")
+@bot.tree.command(name="renombrar", description="Renombra a tu Oculin principal.")
+@app_commands.describe(oculin="El nuevo nombre que le darás a tu Oculin")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
+async def renombrar(interaction: discord.Interaction, oculin: str):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    
+    nombre_antiguo = datos.get("nombre_oculin", "Oculin Principal")
+    nuevo_nombre = oculin.strip()
+    datos["nombre_oculin"] = nuevo_nombre
+    marcar_cambio()
+    
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 🏷️ Identidad Actualizada",
+        description=f"Has renombrado con éxito a tu espécimen de **{nombre_antiguo}** a **{nuevo_nombre}**.",
+        color=0x9b59b6
+    )
+    embed.set_footer(text="Sinteks Labs / Registro de Anomalías")
+    await interaction.response.send_message(embed=embed)
+        @bot.tree.command(name="tienda", description="Compra accesorios, núcleos o un Oculin extra para explorar en paralelo.")
 @app_commands.describe(articulo="Elige qué accesorio o mejora deseas adquirir")
 @app_commands.choices(articulo=[
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
@@ -451,6 +474,7 @@ async def inventario(interaction: discord.Interaction):
     creditos = datos.get("monedas", 0)
     nucleos = datos.get("nucleos_aceleracion", 0)
     cantidad_oculins = datos.get("cantidad_oculins", 1)
+    nombre_oc = datos.get("nombre_oculin", "Oculin Principal")
     objetos = datos.get("objetos", [])
     cd_actual = cooldown_segundos(datos)
     
@@ -460,7 +484,7 @@ async def inventario(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 🎒 Inventario de {interaction.user.display_name}",
-        description="Estado de tus recursos en la red de Oculus:",
+        description=f"Estado de recursos (Nombre del Oculin: **{nombre_oc}**):",
         color=0x2ecc71
     )
     embed.add_field(name="Créditos", value=f"{creditos} 🪙", inline=True)
@@ -468,7 +492,7 @@ async def inventario(interaction: discord.Interaction):
     embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
     embed.add_field(name="Cooldown Actual", value=f"{cd_actual}s", inline=True)
     embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
-    embed.set_footer(text="Usa /vender para cambiar la chatarra por créditos o /tienda para mejorar tu equipo.")
+    embed.set_footer(text="Usa /vender, /renombrar o /tienda para gestionar tu imperio.")
     
     await interaction.response.send_message(embed=embed)
 
@@ -495,8 +519,7 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
     
     await interaction.response.send_message(embed=embed)
-
-# ---------------- COMANDO /LORE ----------------
+    # ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
@@ -517,7 +540,7 @@ class LoreSelectDropdown(discord.ui.Select):
         if seleccion == "Lükaa":
             embed = discord.Embed(
                 title=f"{OCULIN_EMOJI} Expediente: Lükaa",
-                description="**Historia:** Nació hace más de 2.000.000 de años en el planeta Oculus, de una mezcla entre una ocular y Satanás. Al nacer, al ver que salió bien, Satanás destruyó Oculus y lo llevó al infierno. A los 500.000 años se rebeló y lo destronó. Tras millones de años, cayó en la tierra y se asentó en una cueva rusa hasta que el Sr. Diamante lo contrató en Sinteks Labs.\n\n"
+                description="**Historia:** Nació hace más de 2.000.000 de años en el planeta Oculus, de una mezcla entre una ocular y Satanás. Al nacer, al ver que salió bien, Satanás destruyó Oculus y lo llevó al infierno. A los 500.000 años se reveló y lo destronó. Tras millones de años, cayó en la tierra y se asentó en una cueva rusa hasta que el Sr. Diamante lo contrató en Sinteks Labs.\n\n"
                             "⚔️ **Ataques:**\n"
                             "• **Disparo verde:** Rayo de energía con pequeña explosión.\n"
                             "• **Mutación pasiva:** Deforma el alma del oponente en un ser grotesco.\n"
@@ -608,4 +631,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-        
+    
