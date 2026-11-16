@@ -20,8 +20,9 @@ TEXT_CHANNEL_ID = 1546286007308255239  # Cambia esto por el ID de tu canal de te
 ATMOSPHERIC_MESSAGES = [
     "chillido extraño",
     "sonido de araña alien",
-    "wuaaaaah",
-    "*empieza a volar por ahi*"
+    "susurros en la oscuridad",
+    "algo se mueve en las sombras...",
+    "pisadas lejanas rechinan en el suelo metálico"
 ]
 
 # ---------------- SERVIDOR WEB PARA RENDER async ----------------
@@ -69,6 +70,29 @@ async def on_ready():
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
 
+# ---------------- EVENTO DE MENSAJES (MENCIONES Y REACCIONES) ----------------
+@bot.event
+async def on_message(message):
+    # Evitamos que el bot se responda a sí mismo
+    if message.author == bot.user:
+        return
+
+    # Si alguien etiqueta a Oculin en el mensaje
+    if bot.user.mentioned_in(message):
+        try:
+            # Busca el emoji personalizado llamado "ahh" en el servidor
+            emoji = discord.utils.get(message.guild.emojis, name="ahh")
+            if emoji:
+                await message.add_reaction(emoji)
+            else:
+                # Respaldo por si el emoji no está en el servidor
+                await message.add_reaction("👀")
+        except Exception as e:
+            print(f"No se pudo reaccionar al mensaje: {e}")
+
+    # Permite que los comandos sigan funcionando con normalidad
+    await bot.process_commands(message)
+
 # ---------------- BOTÓN INTERACTIVO PARA EL JUEGO ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
@@ -92,7 +116,7 @@ async def jugar(interaction: discord.Interaction, nombre: str):
             color=0xaa0000  # Color rojo atmosférico
         )
         
-        # Agregamos el GIF animado junto a la tarjeta
+        # Agregamos el GIF animado de Lükaa junto a la tarjeta
         embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&")
         embed.set_footer(text="Sinteks Labs / Oculin System")
         
@@ -103,14 +127,13 @@ async def jugar(interaction: discord.Interaction, nombre: str):
             ephemeral=True
         )
 
-# ---------------- APAGADO GRACIÓSO (SHUTDOWN) ----------------
+# ---------------- APAGADO ORDENADO (SHUTDOWN) ----------------
 async def graceful_shutdown(signal_name):
     print(f"Recibida señal {signal_name}, apagando de forma ordenada...")
     channel = bot.get_channel(TEXT_CHANNEL_ID)
     if channel:
         try:
             await channel.send("se duerme")
-            # Damos un pequeño respiro para que el mensaje se alcance a enviar antes de cerrar sesión
             await asyncio.sleep(1)
         except Exception as e:
             print(f"No se pudo enviar el mensaje de cierre: {e}")
@@ -124,29 +147,25 @@ def setup_signals():
 
 # ---------------- PUNTO DE ENTRADA ----------------
 async def main():
-    # Token del bot obtenido desde las variables de entorno de Render
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
         return
 
-    # Configuramos las señales de cierre si el sistema operativo lo soporta (en Linux / Render funciona perfecto)
     if sys.platform != "win32":
         setup_signals()
 
-    # Iniciamos en paralelo el servidor web falso (para Render) y el bot de Discord
-    web_task = asyncio.create_start_task = asyncio.create_task(start_web_server())
+    web_task = asyncio.create_task(start_web_server())
     
     try:
         await bot.start(token)
     except Exception as e:
         print(f"Error al iniciar el bot: {e}")
     finally:
-        # Asegurarnos de enviar el mensaje de apagado si ocurre un fallo general
         channel = bot.get_channel(TEXT_CHANNEL_ID)
         if channel:
             await channel.send("se duerme")
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+        
