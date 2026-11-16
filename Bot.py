@@ -21,13 +21,17 @@ OCULIN_EMOJI = "🕷️"
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://endless-octopus-173709.upstash.io")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAqaNAAIgcDFjYmNjNmY1NzQ2YjA0NzgwYWVjMmQyZjAzZWJkM2ZiMw")
 
+# Estado global del Tamagotchi y de la economía de los usuarios
 estado_mascota = {
     "hambre": 50,
     "felicidad": 50
 }
 
+# Almacén de inventarios y núcleos por usuario en memoria (sincronizable con Upstash)
+inventarios_usuarios = {}
+
 async def cargar_estado_nube():
-    global estado_mascota
+    global estado_mascota, inventarios_usuarios
     url = f"{UPSTASH_URL}/get/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
     
@@ -38,15 +42,23 @@ async def cargar_estado_nube():
                     data = await resp.json()
                     result = data.get("result")
                     if result:
-                        estado_mascota = json.loads(result)
-                        print("Estado cargado exitosamente desde Upstash Redis.")
+                        datos_cargados = json.loads(result)
+                        estado_mascota["hambre"] = datos_cargados.get("hambre", 50)
+                        estado_mascota["felicidad"] = datos_cargados.get("felicidad", 50)
+                        global inventarios_usuarios
+                        inventarios_usuarios = datos_cargados.get("inventarios", {})
+                        print("Estado e inventarios cargados exitosamente desde Upstash Redis.")
     except Exception as e:
         print(f"No se pudo cargar el estado de la nube: {e}")
 
 async def guardar_estado_nube():
     url = f"{UPSTASH_URL}/set/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
-    payload = json.dumps(estado_mascota)
+    payload = json.dumps({
+        "hambre": estado_mascota["hambre"],
+        "felicidad": estado_mascota["felicidad"],
+        "inventarios": inventarios_usuarios
+    })
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -55,6 +67,26 @@ async def guardar_estado_nube():
                     print(f"Error al guardar en Upstash: {resp.status}")
     except Exception as e:
         print(f"Error de red al guardar estado en la nube: {e}")
+
+def obtener_datos_usuario(user_id: str):
+    if user_id not in inventarios_usuarios:
+        inventarios_usuarios[user_id] = {
+            "monedas": 0,
+            "objetos": [],
+            "nucleos_aceleracion": 0
+        }
+    return inventarios_usuarios[user_id]
+
+def calcular_cooldown(user_id: str, base_cooldown: float = 30.0) -> float:
+    """Reduce el cooldown un 25% por cada núcleo comprado, con un límite de 1.0s."""
+    datos = obtener_datos_usuario(user_id)
+    nucleos = datos.get("nucleos_aceleracion", 0)
+    
+    cd = base_cooldown
+    for _ in range(nucleos):
+        cd = cd * 0.75  # Reduce un 25%
+        
+    return max(1.0, round(cd, 1))
 
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
@@ -105,7 +137,7 @@ bot = OculinBot()
 @bot.tree.error
 async def on_app_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
-        msg = f"⏳ Oculin está ocupado. Espera {error.retry_after:.1f}s para interactuar de nuevo."
+        msg = f"⏳ Estás usando este comando muy seguido. Espera {error.retry_after:.1f}s."
     else:
         msg = "💥 Ocurrió un error inesperado al procesar la orden de Oculin."
         print(f"Error en comando: {error}")
@@ -208,12 +240,11 @@ async def estado(interaction: discord.Interaction):
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
     embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    embed.set_footer(text="Usa /alimentar con 🥬, /acariciar o cómprale accesorios en /tienda.")
+    embed.set_footer(text="Usa /inventario para ver tus monedas y objetos.")
     
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="acariciar", description="Dale mimos a Oculin para aumentar su felicidad.")
-@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
 async def acariciar(interaction: discord.Interaction):
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 15)
     await guardar_estado_nube()
@@ -225,16 +256,48 @@ async def acariciar(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="tienda", description="Compra accesorios del catálogo universal para tu Oculin.")
-@app_commands.describe(articulo="Elige qué accesorio deseas adquirir")
+@acariciar.dynamic_cooldown
+def acariciar_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
+
+@bot.tree.command(name="tienda", description="Compra accesorios o el Núcleo de Aceleración para reducir tus cooldowns.")
+@app_commands.describe(articulo="Elige qué accesorio o mejora deseas adquirir")
 @app_commands.choices(articulo=[
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
     app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
-    app_commands.Choice(name="Batería nuclear barata", value="bateria")
+    app_commands.Choice(name="Batería nuclear barata", value="bateria"),
+    app_commands.Choice(name="Núcleo de Aceleración (100 monedas - Reduce CD 25%)", value="nucleo")
 ])
-@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
 async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    
+    if articulo.value == "nucleo":
+        if datos["monedas"] < 100:
+            await interaction.response.send_message(f"❌ No tienes suficientes monedas. Tienes **{datos['monedas']}** 🪙 y necesitas **100** 🪙.", ephemeral=True)
+            return
+        
+        if datos.get("nucleos_aceleracion", 0) >= 12: # Límite técnico para llegar cerca de 1s
+            await interaction.response.send_message("⚠️ Ya has alcanzado el límite máximo de reducción de cooldown (1.0s).", ephemeral=True)
+            return
+            
+        datos["monedas"] -= 100
+        datos["nucleos_aceleracion"] = datos.get("nucleos_aceleracion", 0) + 1
+        await guardar_estado_nube()
+        
+        nuevo_cd = calcular_cooldown(user_id, 30.0)
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} ⚡ ¡Núcleo de Aceleración Adquirido!",
+            description=f"Has comprado un núcleo tecnológico. Tus tiempos de espera ahora se reducen un **25%**.\n⏱️ Tu nuevo cooldown actual es de **{nuevo_cd}s**.",
+            color=0x00ffcc
+        )
+        await interaction.response.send_message(embed=embed)
+        return
+
+    # Artículos cosméticos normales
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 20)
+    datos["objetos"].append(articulo.name)
     await guardar_estado_nube()
     
     descripciones = {
@@ -248,12 +311,16 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         description=descripciones[articulo.value],
         color=0xffaa00
     )
-    embed.set_footer(text="¡Felicidad incrementada por adquisición exitosa!")
+    embed.set_footer(text="¡Felicidad incrementada y objeto añadido a tu inventario!")
     await interaction.response.send_message(embed=embed)
+
+@tienda.dynamic_cooldown
+def tienda_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
 
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
 @app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
-@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
 async def alimentar(interaction: discord.Interaction, comida: str):
     comida_limpia = comida.strip()
     
@@ -279,34 +346,102 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
-# NUEVO COMANDO 1: /explorar
+@alimentar.dynamic_cooldown
+def alimentar_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
+
 @bot.tree.command(name="explorar", description="Manda a Oculin a buscar chatarra y ruinas del extinto planeta Oculus.")
-@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
 async def explorar(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    
     hallazgos = [
-        ("🔋 Encontró una batería de plasma descompuesta.", 10, 5),
-        ("🧩 Halló un fragmento de datos corruptos de la civilización Oculus.", 15, 10),
-        ("🕳️ Cayó en un cráter oscuro y se asustó un poco.", -10, 5),
-        ("✨ Tropezó con un mineral brillante que le pareció fascinante.", 20, 0)
+        ("🔋 Batería de plasma descompuesta", 10, 5, 25),
+        ("🧩 Fragmento de datos corruptos", 15, 10, 40),
+        ("🕳️ Cayó en un cráter oscuro y asustó", -10, 5, 10),
+        ("✨ Mineral brillante de Oculus", 20, 0, 50)
     ]
     
-    texto, inc_felicidad, inc_hambre = random.choice(hallazgos)
+    nombre_objeto, inc_felicidad, inc_hambre, monedas_ganadas = random.choice(hallazgos)
+    
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
     estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + inc_hambre)
+    
+    datos["monedas"] += monedas_ganadas
+    datos["objetos"].append(nombre_objeto)
     await guardar_estado_nube()
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 🛰️ Expedición Planetaria",
-        description=f"Oculin despliega sus alas y se adentra en el vacío.\n\n*{texto}*",
+        description=f"Oculin despliega sus alas y regresa del vacío trayendo botín.\n\n**Encontraste:** {nombre_objeto}\n💰 Has ganado **+{monedas_ganadas} monedas**.",
         color=0x3498db
     )
-    embed.set_footer(text="Exploración de ruinas espaciales completada.")
+    embed.set_footer(text="Usa /vender para comercializar tus hallazgos o /inventario.")
     await interaction.response.send_message(embed=embed)
 
-# NUEVO COMANDO 3: /espiar
+@explorar.dynamic_cooldown
+def explorar_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
+
+@bot.tree.command(name="vender", description="Vende los objetos y chatarra que has encontrado explorando a cambio de monedas.")
+async def vender(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    
+    objetos = datos.get("objetos", [])
+    if not objetos:
+        await interaction.response.send_message("❌ Tu inventario de objetos está vacío. ¡Usa `/explorar` para conseguir chatarra!", ephemeral=True)
+        return
+        
+    # Cada objeto vale 15 monedas al venderlo
+    ganancia_total = len(objetos) * 15
+    datos["monedas"] += ganancia_total
+    datos["objetos"] = [] # Vaciamos la chatarra vendida
+    await guardar_estado_nube()
+    
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 💰 Comercio Intergaláctico",
+        description=f"Has vendido toda tu chatarra acumulada en el mercado negro de Oculus.\n\n✨ Total entregado: **{len(objetos)} objetos**\n💵 Ganancia neta: **+{ganancia_total} monedas**",
+        color=0xf1c40f
+    )
+    await interaction.response.send_message(embed=embed)
+
+@vender.dynamic_cooldown
+def vender_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
+
+@bot.tree.command(name="inventario", description="Muestra tus monedas, núcleos de aceleración y objetos recolectados.")
+async def inventario(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    
+    monedas = datos.get("monedas", 0)
+    nucleos = datos.get("nucleos_aceleracion", 0)
+    objetos = datos.get("objetos", [])
+    cd_actual = calcular_cooldown(user_id, 30.0)
+    
+    lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
+    if len(objetos) > 10:
+        lista_objetos += f" y {len(objetos) - 10} más..."
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 🎒 Inventario de {interaction.user.display_name}",
+        description="Estado de tus recursos en la red de Oculus:",
+        color=0x2ecc71
+    )
+    embed.add_field(name="Monedas", value=f"{monedas} 🪙", inline=True)
+    embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
+    embed.add_field(name="Cooldown Actual de Comandos", value=f"{cd_actual}s", inline=True)
+    embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
+    embed.set_footer(text="Usa /vender para cambiar la chatarra por monedas o /tienda para mejorar tu equipo.")
+    
+    await interaction.response.send_message(embed=embed)
+
 @bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
 @app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
-@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
 async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     nivel_locura = random.randint(0, 100)
     diagnosticos = [
@@ -328,37 +463,12 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     
     await interaction.response.send_message(embed=embed)
 
+@espiar.dynamic_cooldown
+def espiar_cd(interaction: discord.Interaction):
+    cd = calcular_cooldown(str(interaction.user.id), 30.0)
+    return app_commands.Cooldown(1, cd)
+
 # ---------------- INTERCEPTAR APAGADO ----------------
 async def shutdown():
     try:
-        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
-        if channel:
-            await channel.send("*se duerme*")
-            await asyncio.sleep(1)
-    except Exception as e:
-        print(f"No se pudo enviar el mensaje 'se duerme': {e}")
-    
-    await bot.close()
-
-# ---------------- PUNTO DE ENTRADA PRINCIPAL ----------------
-async def main():
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
-        return
-    
-    await start_web_server()
-    
-    if sys.platform != "win32":
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(shutdown()))
-
-    async with bot:
-        await bot.start(token)
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
-        
+        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANN
