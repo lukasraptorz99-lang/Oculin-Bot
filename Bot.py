@@ -77,16 +77,18 @@ def obtener_datos_usuario(user_id: str):
         }
     return inventarios_usuarios[user_id]
 
-def calcular_cooldown(user_id: str, base_cooldown: float = 30.0) -> float:
+def calcular_cooldown(interaction: discord.Interaction) -> app_commands.Cooldown | None:
     """Reduce el cooldown un 25% por cada núcleo comprado, con un límite de 1.0s."""
+    user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
     nucleos = datos.get("nucleos_aceleracion", 0)
     
-    cd = base_cooldown
+    cd = 30.0
     for _ in range(nucleos):
         cd = cd * 0.75  # Reduce un 25%
         
-    return max(1.0, round(cd, 1))
+    final_cd = max(1.0, round(cd, 1))
+    return app_commands.Cooldown(1, final_cd)
 
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
@@ -245,6 +247,7 @@ async def estado(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="acariciar", description="Dale mimos a Oculin para aumentar su felicidad.")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def acariciar(interaction: discord.Interaction):
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 15)
     await guardar_estado_nube()
@@ -256,11 +259,6 @@ async def acariciar(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@acariciar.dynamic_cooldown
-def acariciar_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 @bot.tree.command(name="tienda", description="Compra accesorios o el Núcleo de Aceleración para reducir tus cooldowns.")
 @app_commands.describe(articulo="Elige qué accesorio o mejora deseas adquirir")
 @app_commands.choices(articulo=[
@@ -269,24 +267,32 @@ def acariciar_cd(interaction: discord.Interaction):
     app_commands.Choice(name="Batería nuclear barata", value="bateria"),
     app_commands.Choice(name="Núcleo de Aceleración (100 monedas - Reduce CD 25%)", value="nucleo")
 ])
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
     
     if articulo.value == "nucleo":
+        base_cd = 30.0
+        nucleos_actuales = datos.get("nucleos_aceleracion", 0)
+        cd_calculado = base_cd
+        for _ in range(nucleos_actuales):
+            cd_calculado *= 0.75
+        cd_actual = max(1.0, round(cd_calculado, 1))
+
+        if cd_actual <= 1.0:
+            await interaction.response.send_message("⚠️ Ya has alcanzado el límite máximo de reducción de cooldown (1.0s).", ephemeral=True)
+            return
+
         if datos["monedas"] < 100:
             await interaction.response.send_message(f"❌ No tienes suficientes monedas. Tienes **{datos['monedas']}** 🪙 y necesitas **100** 🪙.", ephemeral=True)
             return
-        
-        if datos.get("nucleos_aceleracion", 0) >= 12: 
-            await interaction.response.send_message("⚠️ Ya has alcanzado el límite máximo de reducción de cooldown (1.0s).", ephemeral=True)
-            return
             
         datos["monedas"] -= 100
-        datos["nucleos_aceleracion"] = datos.get("nucleos_aceleracion", 0) + 1
+        datos["nucleos_aceleracion"] = nucleos_actuales + 1
         await guardar_estado_nube()
         
-        nuevo_cd = calcular_cooldown(user_id, 30.0)
+        nuevo_cd = calcular_cooldown(interaction).rate
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ⚡ ¡Núcleo de Aceleración Adquirido!",
             description=f"Has comprado un núcleo tecnológico. Tiempos de espera reducidos un **25%**.\n⏱️ Cooldown actual: **{nuevo_cd}s**.",
@@ -313,13 +319,9 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
     embed.set_footer(text="¡Felicidad incrementada y objeto añadido a tu inventario!")
     await interaction.response.send_message(embed=embed)
 
-@tienda.dynamic_cooldown
-def tienda_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
 @app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def alimentar(interaction: discord.Interaction, comida: str):
     comida_limpia = comida.strip()
     
@@ -345,12 +347,8 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
-@alimentar.dynamic_cooldown
-def alimentar_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 @bot.tree.command(name="explorar", description="Manda a Oculin a buscar chatarra y ruinas del extinto planeta Oculus.")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def explorar(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
@@ -379,12 +377,8 @@ async def explorar(interaction: discord.Interaction):
     embed.set_footer(text="Usa /vender para comercializar tus hallazgos o /inventario.")
     await interaction.response.send_message(embed=embed)
 
-@explorar.dynamic_cooldown
-def explorar_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 @bot.tree.command(name="vender", description="Vende los objetos y chatarra que has encontrado explorando a cambio de monedas.")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def vender(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
@@ -406,11 +400,6 @@ async def vender(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@vender.dynamic_cooldown
-def vender_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 @bot.tree.command(name="inventario", description="Muestra tus monedas, núcleos de aceleración y objetos recolectados.")
 async def inventario(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
@@ -419,7 +408,8 @@ async def inventario(interaction: discord.Interaction):
     monedas = datos.get("monedas", 0)
     nucleos = datos.get("nucleos_aceleracion", 0)
     objetos = datos.get("objetos", [])
-    cd_actual = calcular_cooldown(user_id, 30.0)
+    cd_obj = calcular_cooldown(interaction)
+    cd_actual = cd_obj.rate if cd_obj else 30.0
     
     lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
     if len(objetos) > 10:
@@ -438,8 +428,9 @@ async def inventario(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="espiar", description="Oculin fija todos seus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
+@bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
 @app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     nivel_locura = random.randint(0, 100)
     diagnosticos = [
@@ -461,11 +452,6 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     
     await interaction.response.send_message(embed=embed)
 
-@espiar.dynamic_cooldown
-def espiar_cd(interaction: discord.Interaction):
-    cd = calcular_cooldown(str(interaction.user.id), 30.0)
-    return app_commands.Cooldown(1, cd)
-
 # ---------------- INTERCEPTAR APAGADO ----------------
 async def shutdown():
     try:
@@ -474,4 +460,18 @@ async def shutdown():
             await channel.send("*se duerme*")
             await asyncio.sleep(1)
     except Exception as e:
-        print(f"No se pudo enviar el mensaje")
+        print(f"No se pudo enviar el mensaje 'se duerme': {e}")
+    
+    await bot.close()
+
+# ---------------- PUNTO DE ENTRADA PRINCIPAL ----------------
+async def main():
+    token = os.environ.get("DISCORD_TOKEN")
+    if not token:
+        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
+        return
+    
+    await start_web_server()
+    
+    if sys.platform != "win32":
+        loop = asyncio.g
