@@ -13,19 +13,18 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID del canal principal actualizado
+# ID del canal principal
 TEXT_CHANNEL_ID = 1546286007308255234  
 
 # Enlace limpio del GIF de Lükaa con audífonos
 LUKAA_GIF_URL = "https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&"
 
-# Lista de frases atmosféricas y de terror
+# Lista de frases atmosféricas actualizada
 ATMOSPHERIC_MESSAGES = [
-    "chillido extraño",
-    "sonido de araña alien",
-    "susurros en la oscuridad",
-    "algo se mueve en las sombras...",
-    "pisadas lejanas rechinan en el suelo metálico"
+    "*chillido extraño*",
+    "*sonido de araña alien*",
+    "*Empieza a volar por ahí*",
+    "Wuahhh"
 ]
 
 # ---------------- SERVIDOR WEB PARA RENDER async ----------------
@@ -66,11 +65,11 @@ async def on_ready():
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
 
-    # Forzamos la búsqueda del canal directamente en la API para enviar "se despierta"
+    # Enviar el mensaje de encendido en cursiva
     try:
         channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
-            await channel.send("se despierta")
+            await channel.send("*se despierta*")
             print("Mensaje 'se despierta' enviado exitosamente.")
     except Exception as e:
         print(f"No se pudo enviar el mensaje 'se despierta': {e}")
@@ -135,7 +134,7 @@ async def graceful_shutdown(signal_name):
     try:
         channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
-            await channel.send("se duerme")
+            await channel.send("*se duerme*")
             await asyncio.sleep(1)
     except Exception as e:
         print(f"No se pudo enviar el mensaje de cierre: {e}")
@@ -167,10 +166,10 @@ async def main():
         try:
             channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
             if channel:
-                await channel.send("se duerme")
+                await channel.send("*se duerme*")
         except Exception:
             pass
 
 if __name__ == "__main__":
     asyncio.run(main())
-                                
+    
