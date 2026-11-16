@@ -25,14 +25,14 @@ estado_mascota = {
     "felicidad": 50    # De 0 (triste/enojado) a 100 (muy feliz)
 }
 
-# Lista de frases atmosféricas y eslóganes publicitarios universales (sin la mención)
+# Lista de frases atmosféricas y eslóganes publicitarios universales
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
     "*sonido de araña alien*",
     "*Empieza a volar por ahí*",
     "Wuahhh",
     "¡Recuerde: un Oculin feliz es un hogar seguro a prueba de explosiones planetarias!",
-    "¡La mascota oficial del planeta Oculus directo a tu consola!",
+    "¡La mascota oficial del extinto planeta Oculus directo a tu consola!",
     "¡No alimente a su Oculin con productos no autorizados o la garantía universal quedará anulada!"
 ]
 
@@ -153,12 +153,12 @@ async def estado(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} Estado de la Mascota Universal",
-        description="Diagnóstico actual del modelo sobreviviente del planeta Oculus:",
+        description="Diagnóstico actual del espécimen (último sobreviviente del planeta Oculus):",
         color=0x7289da
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
     embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    embed.set_footer(text="Usa /alimentar con 🥬, /acariciar o compra accesorios en /tienda.")
+    embed.set_footer(text="Usa /alimentar con 🥬, /acariciar o cómprale accesorios en /tienda.")
     
     await interaction.response.send_message(embed=embed)
 
@@ -187,16 +187,16 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
     
     descripciones = {
         "sombrero": "¡Has equipado un sombrero de copa totalmente invisible! Nadie lo ve, pero Oculin camina con muchísima más elegancia intergaláctica.",
-        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos. Ahora luce un estilo increíblemente moderno y amenazante.",
+        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos. Ahora luce un estilo increíblemente moderno.",
         "bateria": "Le das una batería nuclear barata para que juegue. Emana un leve brillo radioactivo, ¡y a Oculin le encanta!"
     }
     
     embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 🛍️ Catálogo Universal Oculus",
+        title=f"{OCULIN_EMOJI} 🛍️ Catálogo de Accesorios Universales",
         description=descripciones[articulo.value],
         color=0xffaa00
     )
-    embed.set_footer(text="¡Felicidad de la mascota incrementada por compra exitosa!")
+    embed.set_footer(text="¡Felicidad de la mascota incrementada por adquisición exitosa!")
     await interaction.response.send_message(embed=embed)
 
 # ---------------- MINIJUEGO /ALIMENTAR (TAMAGOTCHI DE LECHUGA) ----------------
@@ -238,4 +238,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
+    
