@@ -20,13 +20,13 @@ OCULIN_EMOJI = "🕷️"
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
-# Estado global del Tamagotchi y de la economía de los usuarios
+# Estado global principal de la mascota principal
 estado_mascota = {
     "hambre": 50,
     "felicidad": 50
 }
 
-# Almacén de inventarios y núcleos por usuario en memoria
+# Almacén de inventarios y atributos por usuario en memoria
 inventarios_usuarios = {}
 
 http_session: aiohttp.ClientSession = None
@@ -88,8 +88,12 @@ def obtener_datos_usuario(user_id: str):
         inventarios_usuarios[user_id] = {
             "monedas": 0,
             "objetos": [],
-            "nucleos_aceleracion": 0
+            "nucleos_aceleracion": 0,
+            "cantidad_oculins": 1  # Empieza con 1 Oculin por defecto
         }
+    # Asegurar retrocompatibilidad si el usuario ya existía sin esta clave
+    if "cantidad_oculins" not in inventarios_usuarios[user_id]:
+        inventarios_usuarios[user_id]["cantidad_oculins"] = 1
     return inventarios_usuarios[user_id]
 
 def cooldown_segundos(datos: dict) -> float:
@@ -242,6 +246,8 @@ async def jugar(interaction: discord.Interaction, nombre: app_commands.Choice[st
 
 @bot.tree.command(name="estado", description="Muestra el estado de ánimo y hambre de Oculin.")
 async def estado(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
     hambre = estado_mascota["hambre"]
     felicidad = estado_mascota["felicidad"]
     
@@ -250,7 +256,7 @@ async def estado(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} Estado de la criatura",
-        description="Diagnóstico actual del espécimen (de los últimos sobrevivientes del planeta Oculus):",
+        description=f"Diagnóstico actual (Tienes **{datos.get('cantidad_oculins', 1)}** Oculin(s) bajo tu control):",
         color=0x7289da
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
@@ -272,13 +278,14 @@ async def acariciar(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="tienda", description="Compra accesorios o el Núcleo de Aceleración para reducir tus cooldowns.")
+@bot.tree.command(name="tienda", description="Compra accesorios, núcleos o un Oculin extra para explorar en paralelo.")
 @app_commands.describe(articulo="Elige qué accesorio o mejora deseas adquirir")
 @app_commands.choices(articulo=[
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
     app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
     app_commands.Choice(name="Batería nuclear barata", value="bateria"),
-    app_commands.Choice(name="Núcleo de Aceleración (100 créditos - Reduce CD 25%)", value="nucleo")
+    app_commands.Choice(name="Núcleo de Aceleración (100 créditos - Reduce CD 25%)", value="nucleo"),
+    app_commands.Choice(name="Oculin de Repuesto (500 créditos - Permite explorar en paralelo)", value="oculin_extra")
 ])
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
@@ -304,6 +311,23 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
             title=f"{OCULIN_EMOJI} ⚡ ¡Núcleo de Aceleración Adquirido!",
             description=f"Has comprado un núcleo tecnológico. Tiempos de espera reducidos un **25%**.\n⏱️ Cooldown actual: **{nuevo_cd}s**.",
             color=0x00ffcc
+        )
+        await interaction.response.send_message(embed=embed)
+        return
+
+    if articulo.value == "oculin_extra":
+        if datos["monedas"] < 500:
+            await interaction.response.send_message(f"❌ Necesitas **500 créditos** 🪙 para clonar/comprar otro Oculin. Tienes **{datos['monedas']}** 🪙.", ephemeral=True)
+            return
+            
+        datos["monedas"] -= 500
+        datos["cantidad_oculins"] = datos.get("cantidad_oculins", 1) + 1
+        marcar_cambio()
+        
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} 🕷️ ¡Nuevo Oculin Adquirido!",
+            description=f"Has adquirido un espécimen adicional de la colmena. Ahora posees **{datos['cantidad_oculins']} Oculins** y puedes recolectar recompensas múltiples al explorar.",
+            color=0x9b59b6
         )
         await interaction.response.send_message(embed=embed)
         return
@@ -359,37 +383,45 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="explorar", description="Manda a Oculin a buscar chatarra y ruinas del extinto planeta Oculus.")
+@bot.tree.command(name="explorar", description="Manda a tus Oculins a buscar chatarra y ruinas del extinto planeta Oculus en paralelo.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def explorar(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
+    cantidad = datos.get("cantidad_oculins", 1)
     
-    hallazgos = [
+    hallazgos_posibles = [
         ("🔋 Batería de plasma descompuesta", 10, 5, 25),
         ("🧩 Fragmento de datos corruptos", 15, 10, 40),
         ("🕳️ Cayó en un cráter oscuro y asustó", -10, 5, 10),
         ("✨ Mineral brillante de Oculus", 20, 0, 50)
     ]
     
-    nombre_objeto, inc_felicidad, inc_hambre, creditos_ganados = random.choice(hallazgos)
+    resultados_texto = []
+    total_creditos = 0
     
-    estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
-    estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + inc_hambre)
-    
-    datos["monedas"] += creditos_ganados
-    datos["objetos"].append(nombre_objeto)
+    # Realiza una expedición por cada Oculin que posea el usuario
+    for i in range(cantidad):
+        nombre_objeto, inc_felicidad, inc_hambre, creditos_ganados = random.choice(hallazgos_posibles)
+        estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
+        estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + inc_hambre)
+        
+        total_creditos += creditos_ganados
+        datos["objetos"].append(nombre_objeto)
+        resultados_texto.append(f"• **Oculin #{i+1}:** {nombre_objeto} (+{creditos_ganados} 🪙)")
+
+    datos["monedas"] += total_creditos
     marcar_cambio()
 
     embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 🛰️ Expedición Planetaria",
-        description=f"Oculin despliega sus alas y regresa del vacío trayendo botín.\n\n**Encontraste:** {nombre_objeto}\n💰 Has ganado **+{creditos_ganados} créditos**.",
+        title=f"{OCULIN_EMOJI} 🛰️ Expedición de Flota ({cantidad} Oculins)",
+        description=f"Tus especímenes despliegan sus alas y regresan del vacío trayendo botín simultáneo:\n\n" + "\n".join(resultados_texto) + f"\n\n💰 **Total ganado:** +{total_creditos} créditos.",
         color=0x3498db
     )
     embed.set_footer(text="Usa /vender para comercializar tus hallazgos o /inventario.")
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="vender", description="Vende los objetos y chatarra que has encontrado explorando a cambio de créditos.")
+@bot.tree.command(name="vender", description="Vende los objetos y chatarra que han encontrado tus Oculins a cambio de créditos.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def vender(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
@@ -407,12 +439,12 @@ async def vender(interaction: discord.Interaction):
     
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 💰 Comercio Intergaláctico",
-        description=f"Has vendido toda tu chatarra acumulada en el mercado negro de Oculus.\n\n✨ Total entregado: **{len(objetos)} objetos**\n💵 Ganancia neta: **+{ganancia_total} créditos**",
+        description=f"Has vendido toda la chatarra acumulada por tus expediciones en el mercado negro de Oculus.\n\n✨ Total entregado: **{len(objetos)} objetos**\n💵 Ganancia neta: **+{ganancia_total} créditos**",
         color=0xf1c40f
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="inventario", description="Muestra tus créditos, núcleos de aceleración y objetos recolectados.")
+@bot.tree.command(name="inventario", description="Muestra tus créditos, cantidad de Oculins, núcleos y objetos.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def inventario(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
@@ -420,6 +452,7 @@ async def inventario(interaction: discord.Interaction):
     
     creditos = datos.get("monedas", 0)
     nucleos = datos.get("nucleos_aceleracion", 0)
+    cantidad_oculins = datos.get("cantidad_oculins", 1)
     objetos = datos.get("objetos", [])
     cd_actual = cooldown_segundos(datos)
     
@@ -433,38 +466,18 @@ async def inventario(interaction: discord.Interaction):
         color=0x2ecc71
     )
     embed.add_field(name="Créditos", value=f"{creditos} 🪙", inline=True)
+    embed.add_field(name="Oculins en propiedad", value=f"{cantidad_oculins} 🕷️", inline=True)
     embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
-    embed.add_field(name="Cooldown Actual de Comandos", value=f"{cd_actual}s", inline=True)
+    embed.add_field(name="Cooldown Actual", value=f"{cd_actual}s", inline=True)
     embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
     embed.set_footer(text="Usa /vender para cambiar la chatarra por créditos o /tienda para mejorar tu equipo.")
     
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
-@app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
-@app_commands.checks.dynamic_cooldown(calcular_cooldown)
-async def espiar(interaction: discord.Interaction, usuario: discord.Member):
-    nivel_locura = random.randint(0, 100)
-    diagnosticos = [
-        "Apto para la supervivencia en Oculus.",
-        "Riesgo moderado de mutación por radiación cuántica.",
-        "Absolutamente inestable, podría desintegrarse en cualquier momento.",
-        "Posee una extraña resistencia mental a las sombras."
-    ]
-    diagnostico = random.choice(diagnosticos)
+@app_commands.describe(usuario="El usuario al que Oculin va a analizar
 
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 👁️ Escaneo Ocular",
-        description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
-        color=0x9b59b6
-    )
-    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
-    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
-    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
-    
-    await interaction.response.send_message(embed=embed)
-
-# ---------------- COMANDO /LORE ----------------
+                       # ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
@@ -576,3 +589,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    
