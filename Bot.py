@@ -118,21 +118,6 @@ ATMOSPHERIC_MESSAGES = [
 def clamp(val: int) -> int:
     return max(0, min(100, val))
 
-# ---------------- SERVIDOR WEB PARA RENDER ----------------
-async def handle(request):
-    return web.Response(text="Oculin Bot está vivo y operando 24/7.")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print(f"Servidor web corriendo en el puerto {port}")
-
 # ---------------- CLASE PRINCIPAL DEL BOT ----------------
 class OculinBot(commands.Bot):
     def __init__(self):
@@ -479,6 +464,60 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     
     await interaction.response.send_message(embed=embed)
 
+# ---------------- COMANDO /LORE ----------------
+class LoreSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(LoreSelectDropdown())
+
+class LoreSelectDropdown(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Lükaa", description="El origen del terror ocular y guardia en Sinteks.", emoji="👁️"),
+            discord.SelectOption(label="Sr. Diamante", description="Diamante bugueado de la 1.9 y gerente en Sinteks.", emoji="💎"),
+            discord.SelectOption(label="Willy", description="De la realeza británica a despertador en Chile.", emoji="📉")
+        ]
+        super().__init__(placeholder="Elige un personaje para consultar su expediente...", min_values=1, max_values=1, options=options)10000
+async def callback(self, interaction: discord.Interaction):
+        seleccion = self.values[0]
+        
+        if seleccion == "Lükaa":
+            embed = discord.Embed(
+                title=f"{OCULIN_EMOJI} Expediente: Lükaa",
+                description="**Historia:** Nació hace más de 2.000.000 de años en el planeta Oculus, de una mezcla entre una ocular y Satanás. Al nacer, al ver que salió bien, Satanás destruyó Oculus y lo llevó al infierno. A los 500.000 años se rebeló y lo destronó. Tras millones de años, cayó en la tierra y se asentó en una cueva rusa hasta que el Sr. Diamante lo contrató en Sinteks Labs.\n\n"
+                            "⚔️ **Ataques:**\n"
+                            "• **Disparo verde:** Rayo de energía con pequeña explosión.\n"
+                            "• **Mutación pasiva:** Deforma el alma del oponente en un ser grotesco.\n"
+                            "• **Extensión de dominio (Infierno Infinito):** Cúpula oscura donde es un Dios.\n\n"
+                            "👁️ **Apariencia:** Globo ocular sin párpados, iris azul pálido, pupila azul oscuro y brillo azul claro. Por atrás tiene 3 tentáculos (vinotinto, rojo oscuro y rojo).",
+                color=0xaa0000
+            )
+        elif seleccion == "Sr. Diamante":
+            embed = discord.Embed(
+                title=f"💎 Expediente: Sr. Diamante",
+                description="**Historia:** Su nombre verdadero es *Diamante Difous Geminton sedius*. Proviene de un mineral de diamante de la versión 1.9 beta pré-release picado con toque de seda que por un bug cobró vida con inteligencia de jugador promedio y permisos de creativo (volar, fuerza, spawnear bloques). Tras recorrer dimensiones y conseguir un molde de armadura único en las ciudades del End, logró una 'ingeniosa entrevista laboral' para ser gerente y semi-jefe en sedes de Sinteks Labs (WoodLands, Sinteks Office, Infernos Labs y Sinteks Industries), además de ser dueño de un casino.\n\n"
+                            "✨ **Habilidades:** Vuelo, superfuerza y capacidad infinita de spawnear diamantes.",
+                color=0x00ffff
+            )
+        elif seleccion == "Willy":
+            embed = discord.Embed(
+                title=f"📉 Expediente: Willy",
+                description="**Historia:** Nació en el Reino Unido en el seno de una familia real. Tras una crisis económica se mudó a Alemania y, al cabo de 3 años, emigró a Chile en busca de oportunidades. Consiguió empleo en Sinteks como 'despertador humano'. Lamentablemente, tras la disolución de Sinteks, Willy se convirtió en un fracasado que apenas sobrevive para comer.",
+                color=0x95a5a6
+            )
+            
+        embed.set_footer(text="Sinteks Labs / Archivos Confidenciales de Oculus")
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
+@bot.tree.command(name="lore", description="Consulta los expedientes e historia de los personajes del universo de Oculin.")
+async def lore(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} Base de Datos de Lore - Sinteks Labs",
+        description="Selecciona en el menú desplegable de abajo el archivo histórico del personaje que deseas investigar.",
+        color=0x7289da
+    )
+    await interaction.response.send_message(embed=embed, view=LoreSelectView())
+
 # ---------------- SERVIDOR WEB PARA RENDER ----------------
 async def handle(request):
     return web.Response(text="Oculin Bot está vivo y operando 24/7.")
@@ -536,3 +575,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    
