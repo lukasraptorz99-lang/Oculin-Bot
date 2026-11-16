@@ -278,7 +278,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
             await interaction.response.send_message(f"❌ No tienes suficientes monedas. Tienes **{datos['monedas']}** 🪙 y necesitas **100** 🪙.", ephemeral=True)
             return
         
-        if datos.get("nucleos_aceleracion", 0) >= 12: # Límite técnico para llegar cerca de 1s
+        if datos.get("nucleos_aceleracion", 0) >= 12: 
             await interaction.response.send_message("⚠️ Ya has alcanzado el límite máximo de reducción de cooldown (1.0s).", ephemeral=True)
             return
             
@@ -295,7 +295,6 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         await interaction.response.send_message(embed=embed)
         return
 
-    # Artículos cosméticos normales
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 20)
     datos["objetos"].append(articulo.name)
     await guardar_estado_nube()
@@ -395,10 +394,9 @@ async def vender(interaction: discord.Interaction):
         await interaction.response.send_message("❌ Tu inventario de objetos está vacío. ¡Usa `/explorar` para conseguir chatarra!", ephemeral=True)
         return
         
-    # Cada objeto vale 15 monedas al venderlo
     ganancia_total = len(objetos) * 15
     datos["monedas"] += ganancia_total
-    datos["objetos"] = [] # Vaciamos la chatarra vendida
+    datos["objetos"] = [] 
     await guardar_estado_nube()
     
     embed = discord.Embed(
@@ -471,4 +469,9 @@ def espiar_cd(interaction: discord.Interaction):
 # ---------------- INTERCEPTAR APAGADO ----------------
 async def shutdown():
     try:
-        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANN
+        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
+        if channel:
+            await channel.send("*se duerme*")
+            await asyncio.sleep(1)
+    except Exception as e:
+        print(f"N
