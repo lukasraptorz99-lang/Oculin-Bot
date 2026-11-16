@@ -134,7 +134,6 @@ async def estado(interaction: discord.Interaction):
     hambre = estado_mascota["hambre"]
     felicidad = estado_mascota["felicidad"]
     
-    # Definir texto según la felicidad
     if felicidad > 75:
         animo = "😁 Muy feliz (¡Cuidado, podría estar planeando algo!)"
     elif felicidad > 40:
@@ -142,7 +141,6 @@ async def estado(interaction: discord.Interaction):
     else:
         animo = "💀 Deprimido / Enojado (Emite chillidos de frustración)"
 
-    # Definir texto según el hambre
     if hambre < 30:
         saciado = "🟢 Saciado (Comió suficiente lechuga)"
     elif hambre < 70:
@@ -199,24 +197,6 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
-# ---------------- APAGADO ORDENADO (SHUTDOWN) ----------------
-async def graceful_shutdown(signal_name):
-    print(f"Recibida señal {signal_name}, apagando de forma ordenada...")
-    try:
-        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
-        if channel:
-            await channel.send("*se duerme*")
-            await asyncio.sleep(1)
-    except Exception as e:
-        print(f"No se pudo enviar el mensaje de cierre: {e}")
-    await bot.close()
-    sys.exit(0)
-
-def setup_signals():
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s.name)))
-
 # ---------------- PUNTO DE ENTRADA ----------------
 async def main():
     token = os.environ.get("DISCORD_TOKEN")
@@ -224,22 +204,10 @@ async def main():
         print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
         return
 
-    if sys.platform != "win32":
-        setup_signals()
-
     web_task = asyncio.create_task(start_web_server())
     
-    try:
-        await bot.start(token)
-    except Exception as e:
-        print(f"Error al iniciar el bot: {e}")
-    finally:
-        try:
-            channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
-            if channel:
-                await channel.send("*se duerme*")
-        except Exception:
-            pass
+    # Iniciamos el bot de forma limpia sin disparar falsos cierres por reconexiones de Render
+    await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())
