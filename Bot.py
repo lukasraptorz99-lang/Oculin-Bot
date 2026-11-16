@@ -14,7 +14,6 @@ from aiohttp import web
 intents = discord.Intents.default()
 intents.message_content = True
 
-# Nuevo ID del canal de texto configurado
 TEXT_CHANNEL_ID = 1571922687708897290  
 OCULIN_EMOJI = "🕷️"
 
@@ -280,6 +279,55 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
+# NUEVO COMANDO 1: /explorar
+@bot.tree.command(name="explorar", description="Manda a Oculin a buscar chatarra y ruinas del extinto planeta Oculus.")
+@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
+async def explorar(interaction: discord.Interaction):
+    hallazgos = [
+        ("🔋 Encontró una batería de plasma descompuesta.", 10, 5),
+        ("🧩 Halló un fragmento de datos corruptos de la civilización Oculus.", 15, 10),
+        ("🕳️ Cayó en un cráter oscuro y se asustó un poco.", -10, 5),
+        ("✨ Tropezó con un mineral brillante que le pareció fascinante.", 20, 0)
+    ]
+    
+    texto, inc_felicidad, inc_hambre = random.choice(hallazgos)
+    estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
+    estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + inc_hambre)
+    await guardar_estado_nube()
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 🛰️ Expedición Planetaria",
+        description=f"Oculin despliega sus alas y se adentra en el vacío.\n\n*{texto}*",
+        color=0x3498db
+    )
+    embed.set_footer(text="Exploración de ruinas espaciales completada.")
+    await interaction.response.send_message(embed=embed)
+
+# NUEVO COMANDO 3: /espiar
+@bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
+@app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
+@app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
+async def espiar(interaction: discord.Interaction, usuario: discord.Member):
+    nivel_locura = random.randint(0, 100)
+    diagnosticos = [
+        "Apto para la supervivencia en Oculus.",
+        "Riesgo moderado de mutación por radiación cuántica.",
+        "Absolutamente inestable, podría desintegrarse en cualquier momento.",
+        "Posee una extraña resistencia mental a las sombras."
+    ]
+    diagnostico = random.choice(diagnosticos)
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 👁️ Escaneo Ocular",
+        description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
+        color=0x9b59b6
+    )
+    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
+    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
+    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
+    
+    await interaction.response.send_message(embed=embed)
+
 # ---------------- INTERCEPTAR APAGADO ----------------
 async def shutdown():
     try:
@@ -313,4 +361,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-    
+        
