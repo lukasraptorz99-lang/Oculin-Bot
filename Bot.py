@@ -2,6 +2,8 @@ import os
 import signal
 import sys
 import asyncio
+import random
+import json
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -11,15 +13,29 @@ from aiohttp import web
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-TEXT_CHANNEL_ID = 1546286007308255234  
+TEXT_CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 1546286007308255234))  
 OCULIN_EMOJI = "🕷️"
 
-estado_mascota = {
-    "hambre": 50,
-    "felicidad": 50
-}
+# Archivo local para persistencia del Tamagotchi
+ESTADO_FILE = "estado_oculin.json"
+
+def cargar_estado():
+    if os.path.exists(ESTADO_FILE):
+        try:
+            with open(ESTADO_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"hambre": 50, "felicidad": 50}
+
+def guardar_estado():
+    try:
+        with open(ESTADO_FILE, "w") as f:
+            json.dump(estado_mascota, f)
+    except Exception as e:
+        print(f"Error al guardar estado: {e}")
+
+estado_mascota = cargar_estado()
 
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
@@ -30,6 +46,9 @@ ATMOSPHERIC_MESSAGES = [
     "¡La mascota oficial del extinto planeta Oculus directo a tu consola!",
     "¡No alimente a su Oculin con productos no autorizados o la garantía universal quedará anulada!"
 ]
+
+def clamp(val: int) -> int:
+    return max(0, min(100, val))
 
 # ---------------- SERVIDOR WEB PARA RENDER async ----------------
 async def handle(request):
@@ -46,54 +65,98 @@ async def start_web_server():
     await site.start()
     print(f"Servidor web corriendo en el puerto {port}")
 
-# ---------------- TAREAS Y CICLO DE VIDA ----------------
+# ---------------- CLASE PRINCIPAL DEL BOT CON SETUP_HOOK ----------------
+class OculinBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix=commands.when_mentioned, intents=intents)
+        self.web_task = None
+
+    async def setup_hook(self):
+        self.web_task = asyncio.create_task(start_web_server())
+        
+        try:
+            synced = await self.tree.sync()
+            print(f"Se sincronizaron {len(synced)} comandos de barra.")
+        except Exception as e:
+            print(f"Error al sincronizar comandos: {e}")
+            
+        decaer_estado.start()
+
+bot = OculinBot()
+
+# ---------------- MANEJADOR GLOBAL DE ERRORES DE COMANDOS ----------------
+@bot.tree.error
+async def on_app_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        msg = f"⏳ Estás usando este comando muy seguido. Espera {error.retry_after:.1f}s."
+    else:
+        msg = "💥 Ocurrió un error inesperado al procesar la orden de Oculin."
+        print(f"Error en comando: {error}")
+    
+    if interaction.response.is_done():
+        await interaction.followup.send(msg, ephemeral=True)
+    else:
+        await interaction.response.send_message(msg, ephemeral=True)
+
+# ---------------- TAREAS EN SEGUNDO PLANO ----------------
+@tasks.loop(minutes=10)
+async def decaer_estado():
+    estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + 5)
+    if estado_mascota["hambre"] > 70:
+        estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] - 3)
+    guardar_estado()
+
+@decaer_estado.before_loop
+async def before_decaer_estado():
+    await bot.wait_until_ready()
+
 @tasks.loop(minutes=20)
 async def atmospheric_loop():
     try:
-        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
-            import random
             frase = random.choice(ATMOSPHERIC_MESSAGES)
             await channel.send(frase)
     except Exception as e:
         print(f"Error en el bucle atmosférico: {e}")
 
+@atmospheric_loop.before_loop
+async def before_atmospheric_loop():
+    await bot.wait_until_ready()
+
+# ---------------- EVENTOS ----------------
 @bot.event
 async def on_ready():
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
+    
     try:
-        synced = await bot.tree.sync()
-        print(f"Se sincronizaron {len(synced)} comandos de barra.")
-    except Exception as e:
-        print(f"Error al sincronizar comandos: {e}")
-
-    try:
-        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
             await channel.send("*se despierta*")
     except Exception as e:
-        print(f"No se pudo enviar el mensaje: {e}")
+        print(f"No se pudo enviar el mensaje 'se despierta': {e}")
     
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
 
 @bot.event
 async def on_message(message):
-    if message.author == bot.user:
+    if message.author.bot:
         return
 
-    if bot.user.mentioned_in(message):
+    if bot.user.mentioned_in(message) and not message.mention_everyone:
         try:
-            emoji = discord.utils.get(message.guild.emojis, name="ahh")
+            emoji = discord.utils.get(message.guild.emojis, name="ahh") if message.guild else None
             if emoji:
                 await message.add_reaction(emoji)
             else:
                 await message.add_reaction("👀")
         except Exception as e:
-            print(f"Error en reacción: {e}")
+            print(f"Error al reaccionar: {e}")
 
     await bot.process_commands(message)
 
+# ---------------- COMANDOS ----------------
 class JuegoView(discord.ui.View):
     def __init__(self, url: str):
         super().__init__()
@@ -101,101 +164,13 @@ class JuegoView(discord.ui.View):
 
 @bot.tree.command(name="jugar", description="Inicia un juego interactivo del universo de Oculin.")
 @app_commands.describe(nombre="El nombre del juego que deseas abrir")
-async def jugar(interaction: discord.Interaction, nombre: str):
-    juego_lower = nombre.lower().strip()
-    if "lükaa" in juego_lower or "luka" in juego_lower:
+@app_commands.choices(nombre=[
+    app_commands.Choice(name="Lükaa Ocular V13", value="lukaa")
+])
+async def jugar(interaction: discord.Interaction, nombre: app_commands.Choice[str]):
+    if nombre.value == "lukaa":
         url_juego = "https://lukasraptorz99-lang.github.io/"
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} Lükaa ocular V13",
-            description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
-            color=0xaa0000
-        )
-        embed.set_footer(text="Sinteks Labs / Oculin System")
-        await interaction.response.send_message(embed=embed, view=JuegoView(url_juego))
-    else:
-        await interaction.response.send_message(
-            f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**.",
-            ephemeral=True
-        )
-
-@bot.tree.command(name="estado", description="Muestra el estado de ánimo y hambre de Oculin.")
-async def estado(interaction: discord.Interaction):
-    hambre = estado_mascota["hambre"]
-    felicidad = estado_mascota["felicidad"]
-    
-    animo = "😁 Muy feliz" if felicidad > 75 else ("😐 Neutral" if felicidad > 40 else "💀 Deprimido / Enojado")
-    saciado = "🟢 Saciado" if hambre < 30 else ("🟡 Con algo de apetito" if hambre < 70 else "🔴 ¡Muerto de hambre!")
-
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} Estado de la criatura",
-        description="Diagnóstico actual del espécimen (de los últimos sobrevivientes del planeta Oculus):",
-        color=0x7289da
-    )
-    embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
-    embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="acariciar", description="Dale mimos a Oculin para aumentar su felicidad.")
-async def acariciar(interaction: discord.Interaction):
-    estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 15)
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} ✨ ¡Acariciado!",
-        description="Le das palmaditas con cuidado. *¡Su felicidad ha aumentado!*",
-        color=0x00aa00
-    )
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="tienda", description="Compra accesorios del catálogo universal para tu Oculin.")
-@app_commands.describe(articulo="Elige qué accesorio deseas adquirir")
-@app_commands.choices(articulo=[
-    app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
-    app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
-    app_commands.Choice(name="Batería nuclear barata", value="bateria")
-])
-async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
-    estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 20)
-    descripciones = {
-        "sombrero": "¡Has equipado un sombrero de copa totalmente invisible!",
-        "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos.",
-        "bateria": "Le das una batería nuclear barata para que juegue."
-    }
-    embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} 🛍️ Catálogo de Accesorios Universales",
-        description=descripciones[articulo.value],
-        color=0xffaa00
-    )
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
-@app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
-async def alimentar(interaction: discord.Interaction, comida: str):
-    comida_limpia = comida.strip()
-    if "🥬" in comida_limpia or "lechuga" in comida_limpia.lower():
-        estado_mascota["hambre"] = max(0, estado_mascota["hambre"] - 35)
-        estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 10)
-        embed = discord.Embed(
-            title=f"{OCULIN_EMOJI} 🍽️ ¡Ñam... ñam!",
-            description="Oculin devora la lechuga con desesperación absoluta. *¡Hambre reducida!*",
-            color=0x00aa00
-        )
-        await interaction.response.send_message(embed=embed)
-    else:
-        estado_mascota["felicidad"] = max(0, estado_mascota["felicidad"] - 10)
-        embed = discord.Embed(
-            title=f"{OCULIN_EMOJI} ❌ ¡Rechazado!",
-            description=f"Oculin desintegra tu **{comida_limpia}** con la mirada. *¡Exige lechuga (🥬)!*",
-            color=0xaa0000
-        )
-        await interaction.response.send_message(embed=embed)
-
-async def main():
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        print("Error: DISCORD_TOKEN no configurado.")
-        return
-    web_task = asyncio.create_task(start_web_server())
-    await bot.start(token)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-        
+            description="Las sombras acechan en el servidor. Presiona el botón
+            
