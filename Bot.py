@@ -8,6 +8,7 @@ import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
+from aiohttp import web
 
 # ---------------- CONFIGURACIÓN DEL BOT ----------------
 intents = discord.Intents.default()
@@ -16,18 +17,16 @@ intents.message_content = True
 TEXT_CHANNEL_ID = int(os.environ.get("CHANNEL_ID", 1546286007308255234))  
 OCULIN_EMOJI = "🕷️"
 
-# Credenciales de Upstash Redis proporcionadas
+# Credenciales de Upstash Redis
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://endless-octopus-173709.upstash.io")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAqaNAAIgcDFjYmNjNmY1NzQ2YjA0NzgwYWVjMmQyZjAzZWJkM2ZiMw")
 
-# Estado por defecto en memoria mientras se sincroniza con la nube
 estado_mascota = {
     "hambre": 50,
     "felicidad": 50
 }
 
 async def cargar_estado_nube():
-    """Carga el estado de Oculin desde Upstash Redis."""
     global estado_mascota
     url = f"{UPSTASH_URL}/get/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
@@ -39,14 +38,12 @@ async def cargar_estado_nube():
                     data = await resp.json()
                     result = data.get("result")
                     if result:
-                        # Upstash guarda el valor como string JSON
                         estado_mascota = json.loads(result)
                         print("Estado cargado exitosamente desde Upstash Redis.")
     except Exception as e:
-        print(f"No se pudo cargar el estado de la nube, usando valores por defecto: {e}")
+        print(f"No se pudo cargar el estado de la nube: {e}")
 
 async def guardar_estado_nube():
-    """Guarda el estado actual de Oculin en Upstash Redis."""
     url = f"{UPSTASH_URL}/set/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
     payload = json.dumps(estado_mascota)
@@ -72,7 +69,7 @@ ATMOSPHERIC_MESSAGES = [
 def clamp(val: int) -> int:
     return max(0, min(100, val))
 
-# ---------------- SERVIDOR WEB PARA RENDER async ----------------
+# ---------------- SERVIDOR WEB PARA RENDER ----------------
 async def handle(request):
     return web.Response(text="Oculin Bot está vivo y operando 24/7.")
 
@@ -87,17 +84,13 @@ async def start_web_server():
     await site.start()
     print(f"Servidor web corriendo en el puerto {port}")
 
-# ---------------- CLASE PRINCIPAL DEL BOT CON SETUP_HOOK ----------------
+# ---------------- CLASE PRINCIPAL DEL BOT ----------------
 class OculinBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
-        self.web_task = None
 
     async def setup_hook(self):
-        # Cargamos el estado de la nube apenas arranca el bot
         await cargar_estado_nube()
-        
-        self.web_task = asyncio.create_task(start_web_server())
         
         try:
             synced = await self.tree.sync()
@@ -109,7 +102,6 @@ class OculinBot(commands.Bot):
 
 bot = OculinBot()
 
-# ---------------- MANEJADOR GLOBAL DE ERRORES DE COMANDOS ----------------
 @bot.tree.error
 async def on_app_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandOnCooldown):
@@ -123,7 +115,6 @@ async def on_app_error(interaction: discord.Interaction, error: app_commands.App
     else:
         await interaction.response.send_message(msg, ephemeral=True)
 
-# ---------------- TAREAS EN SEGUNDO PLANO ----------------
 @tasks.loop(minutes=10)
 async def decaer_estado():
     estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + 5)
@@ -149,7 +140,6 @@ async def atmospheric_loop():
 async def before_atmospheric_loop():
     await bot.wait_until_ready()
 
-# ---------------- EVENTOS ----------------
 @bot.event
 async def on_ready():
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
@@ -289,7 +279,7 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         )
         await interaction.response.send_message(embed=embed)
 
-# ---------------- INTERCEPTAR APAGADO (SE DUERME) ----------------
+# ---------------- INTERCEPTAR APAGADO ----------------
 async def shutdown():
     try:
         channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
@@ -308,10 +298,14 @@ async def main():
         print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
         return
     
+    # 1. Levantar primero el servidor web para que Render detecte el puerto de inmediato
+    await start_web_server()
+    
     if sys.platform != "win32":
         loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(shutdown()))
 
+    # 2. Iniciar el bot de Discord en paralelo
     async with bot:
         await bot.start(token)
 
