@@ -328,7 +328,6 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         await interaction.response.send_message(embed=embed)
         return
 
-    # Artículos cosméticos de la tienda cuestan 50 monedas y sí van al inventario para venderse luego
     if datos["monedas"] < 50:
         await interaction.response.send_message(f"❌ Este accesorio cuesta **50 monedas** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
         return
@@ -478,4 +477,66 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
         description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
         color=0x9b59b6
     )
-    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=Fals
+    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
+    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
+    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
+    
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- SERVIDOR WEB PARA RENDER ----------------
+async def handle(request):
+    return web.Response(text="Oculin Bot está vivo y operando 24/7.")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Servidor web corriendo en el puerto {port}")
+
+# ---------------- INTERCEPTAR APAGADO ----------------
+async def shutdown():
+    print("Señal de apagado recibida, guardando estado y cerrando sesión...")
+    await guardar_estado_nube()
+    
+    try:
+        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
+        if channel:
+            await channel.send("*se duerme*")
+            await asyncio.sleep(1)
+    except Exception as e:
+        print(f"No se pudo enviar el mensaje 'se duerme': {e}")
+    
+    if http_session and not http_session.closed:
+        await http_session.close()
+        
+    await bot.close()
+
+# ---------------- PUNTO DE ENTRADA PRINCIPAL ----------------
+async def main():
+    token = os.environ.get("DISCORD_TOKEN")
+    if not token:
+        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
+        return
+    
+    await start_web_server()
+    
+    if sys.platform != "win32":
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(shutdown()))
+        except NotImplementedError:
+            pass
+
+    async with bot:
+        await bot.start(token)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
