@@ -289,7 +289,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         nuevo_cd = calcular_cooldown(user_id, 30.0)
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ⚡ ¡Núcleo de Aceleración Adquirido!",
-            description=f"Has comprado un núcleo tecnológico. Tus tiempos de espera ahora se reducen un **25%**.\n⏱️ Tu nuevo cooldown actual es de **{nuevo_cd}s**.",
+            description=f"Has comprado un núcleo tecnológico. Tiempos de espera reducidos un **25%**.\n⏱️ Cooldown actual: **{nuevo_cd}s**.",
             color=0x00ffcc
         )
         await interaction.response.send_message(embed=embed)
@@ -438,7 +438,7 @@ async def inventario(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
+@bot.tree.command(name="espiar", description="Oculin fija todos seus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
 @app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
 async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     nivel_locura = random.randint(0, 100)
@@ -474,3 +474,4 @@ async def shutdown():
             await channel.send("*se duerme*")
             await asyncio.sleep(1)
     except Exception as e:
+        print(f"No se pudo enviar el mens
