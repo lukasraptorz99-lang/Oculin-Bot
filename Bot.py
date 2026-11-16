@@ -12,14 +12,14 @@ from aiohttp import web
 
 # ---------------- CONFIGURACIÓN DEL BOT ----------------
 intents = discord.Intents.default()
-intents.message_content = True
+# Se desactiva message_content tal como se recomendó (las menciones funcionan igual)
 
 TEXT_CHANNEL_ID = 1571922687708897290  
 OCULIN_EMOJI = "🕷️"
 
-# Credenciales de Upstash Redis
-UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL", "https://endless-octopus-173709.upstash.io")
-UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "gQAAAAAAAqaNAAIgcDFjYmNjNmY1NzQ2YjA0NzgwYWVjMmQyZjAzZWJkM2ZiMw")
+# Credenciales de Upstash Redis (Leyendo estrictamente de variables de entorno)
+UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
 # Estado global del Tamagotchi y de la economía de los usuarios
 estado_mascota = {
@@ -27,31 +27,44 @@ estado_mascota = {
     "felicidad": 50
 }
 
-# Almacén de inventarios y núcleos por usuario en memoria (sincronizable con Upstash)
+# Almacén de inventarios y núcleos por usuario en memoria
 inventarios_usuarios = {}
+
+# Sesión HTTP global para optimizar conexiones con Upstash y evitar abrirlas/cerrarlas constantemente
+http_session: aiohttp.ClientSession = None
+
+# Flag para control de guardado pendiente (Debounce) y evitar spam a Upstash
+estado_modificado = False
+ya_se_desperto = False
 
 async def cargar_estado_nube():
     global estado_mascota, inventarios_usuarios
+    if not UPSTASH_URL or not UPSTASH_TOKEN:
+        print("Advertencia: Faltan las credenciales de Upstash Redis en el entorno.")
+        return
+
     url = f"{UPSTASH_URL}/get/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    result = data.get("result")
-                    if result:
-                        datos_cargados = json.loads(result)
-                        estado_mascota["hambre"] = datos_cargados.get("hambre", 50)
-                        estado_mascota["felicidad"] = datos_cargados.get("felicidad", 50)
-                        global inventarios_usuarios
-                        inventarios_usuarios = datos_cargados.get("inventarios", {})
-                        print("Estado e inventarios cargados exitosamente desde Upstash Redis.")
+        async with http_session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                result = data.get("result")
+                if result:
+                    datos_cargados = json.loads(result)
+                    estado_mascota["hambre"] = datos_cargados.get("hambre", 50)
+                    estado_mascota["felicidad"] = datos_cargados.get("felicidad", 50)
+                    inventarios_usuarios = datos_cargados.get("inventarios", {})
+                    print("Estado e inventarios cargados exitosamente desde Upstash Redis.")
     except Exception as e:
         print(f"No se pudo cargar el estado de la nube: {e}")
 
 async def guardar_estado_nube():
+    global estado_modificado
+    if not UPSTASH_URL or not UPSTASH_TOKEN:
+        return
+
     url = f"{UPSTASH_URL}/set/oculin_estado"
     headers = {"Authorization": f"Bearer {UPSTASH_TOKEN}"}
     payload = json.dumps({
@@ -61,12 +74,17 @@ async def guardar_estado_nube():
     })
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, data=payload) as resp:
-                if resp.status != 200:
-                    print(f"Error al guardar en Upstash: {resp.status}")
+        async with http_session.post(url, headers=headers, data=payload) as resp:
+            if resp.status == 200:
+                estado_modificado = False
+            else:
+                print(f"Error al guardar en Upstash: {resp.status}")
     except Exception as e:
         print(f"Error de red al guardar estado en la nube: {e}")
+
+def marcar_cambio():
+    global estado_modificado
+    estado_modificado = True
 
 def obtener_datos_usuario(user_id: str):
     if user_id not in inventarios_usuarios:
@@ -77,18 +95,19 @@ def obtener_datos_usuario(user_id: str):
         }
     return inventarios_usuarios[user_id]
 
-def calcular_cooldown(interaction: discord.Interaction) -> app_commands.Cooldown | None:
-    """Reduce el cooldown un 25% por cada núcleo comprado, con un límite de 1.0s."""
-    user_id = str(interaction.user.id)
-    datos = obtener_datos_usuario(user_id)
+def cooldown_segundos(datos: dict) -> float:
+    """Calcula los segundos de cooldown basados en los núcleos de aceleración (base 30s, reducción 25%, mínimo 1.0s)."""
     nucleos = datos.get("nucleos_aceleracion", 0)
-    
     cd = 30.0
     for _ in range(nucleos):
-        cd = cd * 0.75  # Reduce un 25%
-        
-    final_cd = max(1.0, round(cd, 1))
-    return app_commands.Cooldown(1, final_cd)
+        cd = cd * 0.75
+    return max(1.0, round(cd, 1))
+
+def calcular_cooldown(interaction: discord.Interaction) -> app_commands.Cooldown | None:
+    user_id = str(interaction.user.id)
+    datos = obtener_datos_usuario(user_id)
+    segundos = cooldown_segundos(datos)
+    return app_commands.Cooldown(1, segundos)
 
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
@@ -124,6 +143,9 @@ class OculinBot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
     async def setup_hook(self):
+        global http_session
+        http_session = aiohttp.ClientSession()
+        
         await cargar_estado_nube()
         
         try:
@@ -133,6 +155,7 @@ class OculinBot(commands.Bot):
             print(f"Error al sincronizar comandos: {e}")
             
         decaer_estado.start()
+        guardado_automatico.start()
 
 bot = OculinBot()
 
@@ -154,10 +177,17 @@ async def decaer_estado():
     estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + 5)
     if estado_mascota["hambre"] > 70:
         estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] - 3)
-    await guardar_estado_nube()
+    marcar_cambio()
+
+@tasks.loop(seconds=30)
+async def guardado_automatico():
+    """Sistema de guardado con Debounce: solo guarda en Upstash si hubo cambios reales."""
+    if estado_modificado:
+        await guardar_estado_nube()
 
 @decaer_estado.before_loop
-async def before_decaer_estado():
+@guardado_automatico.before_loop
+async def before_loops():
     await bot.wait_until_ready()
 
 @tasks.loop(minutes=20)
@@ -176,14 +206,17 @@ async def before_atmospheric_loop():
 
 @bot.event
 async def on_ready():
+    global ya_se_desperto
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
     
-    try:
-        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
-        if channel:
-            await channel.send("*se despierta*")
-    except Exception as e:
-        print(f"No se pudo enviar el mensaje 'se despierta': {e}")
+    if not ya_se_desperto:
+        ya_se_desperto = True
+        try:
+            channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
+            if channel:
+                await channel.send("*se despierta*")
+        except Exception as e:
+            print(f"No se pudo enviar el mensaje 'se despierta': {e}")
     
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
@@ -250,7 +283,7 @@ async def estado(interaction: discord.Interaction):
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def acariciar(interaction: discord.Interaction):
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 15)
-    await guardar_estado_nube()
+    marcar_cambio()
     
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} ✨ ¡Acariciado!",
@@ -273,13 +306,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
     datos = obtener_datos_usuario(user_id)
     
     if articulo.value == "nucleo":
-        base_cd = 30.0
-        nucleos_actuales = datos.get("nucleos_aceleracion", 0)
-        cd_calculado = base_cd
-        for _ in range(nucleos_actuales):
-            cd_calculado *= 0.75
-        cd_actual = max(1.0, round(cd_calculado, 1))
-
+        cd_actual = cooldown_segundos(datos)
         if cd_actual <= 1.0:
             await interaction.response.send_message("⚠️ Ya has alcanzado el límite máximo de reducción de cooldown (1.0s).", ephemeral=True)
             return
@@ -289,10 +316,10 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
             return
             
         datos["monedas"] -= 100
-        datos["nucleos_aceleracion"] = nucleos_actuales + 1
-        await guardar_estado_nube()
+        datos["nucleos_aceleracion"] = datos.get("nucleos_aceleracion", 0) + 1
+        marcar_cambio()
         
-        nuevo_cd = calcular_cooldown(interaction).rate
+        nuevo_cd = cooldown_segundos(datos)
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ⚡ ¡Núcleo de Aceleración Adquirido!",
             description=f"Has comprado un núcleo tecnológico. Tiempos de espera reducidos un **25%**.\n⏱️ Cooldown actual: **{nuevo_cd}s**.",
@@ -301,9 +328,15 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         await interaction.response.send_message(embed=embed)
         return
 
+    # Artículos cosméticos de la tienda cuestan 50 monedas y sí van al inventario para venderse luego
+    if datos["monedas"] < 50:
+        await interaction.response.send_message(f"❌ Este accesorio cuesta **50 monedas** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
+        return
+
+    datos["monedas"] -= 50
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 20)
     datos["objetos"].append(articulo.name)
-    await guardar_estado_nube()
+    marcar_cambio()
     
     descripciones = {
         "sombrero": "¡Has equipado un sombrero de copa totalmente invisible! Nadie lo ve, pero Oculin camina con elegancia intergaláctica.",
@@ -316,7 +349,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         description=descripciones[articulo.value],
         color=0xffaa00
     )
-    embed.set_footer(text="¡Felicidad incrementada y objeto añadido a tu inventario!")
+    embed.set_footer(text="¡Felicidad incrementada, 50 monedas gastadas y objeto añadido a tu inventario!")
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
@@ -328,7 +361,7 @@ async def alimentar(interaction: discord.Interaction, comida: str):
     if "🥬" in comida_limpia or "lechuga" in comida_limpia.lower():
         estado_mascota["hambre"] = clamp(estado_mascota["hambre"] - 35)
         estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + 10)
-        await guardar_estado_nube()
+        marcar_cambio()
         
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} 🍽️ ¡Ñam... ñam!",
@@ -338,7 +371,7 @@ async def alimentar(interaction: discord.Interaction, comida: str):
         await interaction.response.send_message(embed=embed)
     else:
         estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] - 10)
-        await guardar_estado_nube()
+        marcar_cambio()
         
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ❌ ¡Rechazado!",
@@ -367,7 +400,7 @@ async def explorar(interaction: discord.Interaction):
     
     datos["monedas"] += monedas_ganadas
     datos["objetos"].append(nombre_objeto)
-    await guardar_estado_nube()
+    marcar_cambio()
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 🛰️ Expedición Planetaria",
@@ -391,7 +424,7 @@ async def vender(interaction: discord.Interaction):
     ganancia_total = len(objetos) * 15
     datos["monedas"] += ganancia_total
     datos["objetos"] = [] 
-    await guardar_estado_nube()
+    marcar_cambio()
     
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 💰 Comercio Intergaláctico",
@@ -408,8 +441,7 @@ async def inventario(interaction: discord.Interaction):
     monedas = datos.get("monedas", 0)
     nucleos = datos.get("nucleos_aceleracion", 0)
     objetos = datos.get("objetos", [])
-    cd_obj = calcular_cooldown(interaction)
-    cd_actual = cd_obj.rate if cd_obj else 30.0
+    cd_actual = cooldown_segundos(datos)
     
     lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
     if len(objetos) > 10:
@@ -446,32 +478,4 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
         description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
         color=0x9b59b6
     )
-    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
-    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
-    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
-    
-    await interaction.response.send_message(embed=embed)
-
-# ---------------- INTERCEPTAR APAGADO ----------------
-async def shutdown():
-    try:
-        channel = bot.get_channel(TEXT_CHANNEL_ID) or await bot.fetch_channel(TEXT_CHANNEL_ID)
-        if channel:
-            await channel.send("*se duerme*")
-            await asyncio.sleep(1)
-    except Exception as e:
-        print(f"No se pudo enviar el mensaje 'se duerme': {e}")
-    
-    await bot.close()
-
-# ---------------- PUNTO DE ENTRADA PRINCIPAL ----------------
-async def main():
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
-        return
-    
-    await start_web_server()
-    
-    if sys.platform != "win32":
-        loop = asyncio.g
+    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=Fals
