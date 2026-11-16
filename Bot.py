@@ -473,12 +473,13 @@ class LoreSelectView(discord.ui.View):
 class LoreSelectDropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Lükaa", description="El origen del terror ocular y guardia en Sinteks.", emoji="👁️"),
-            discord.SelectOption(label="Sr. Diamante", description="Diamante bugueado de la 1.9 y gerente en Sinteks.", emoji="💎"),
+            discord.SelectOption(label="Lükaa", description="El origen del terror ocular y gerente en Sinteks.", emoji="👁️"),
+            discord.SelectOption(label="Sr. Diamante", description="Diamante bugueado de la 1.9 y jefe de Sinteks.", emoji="💎"),
             discord.SelectOption(label="Willy", description="De la realeza británica a despertador en Chile.", emoji="📉")
         ]
-        super().__init__(placeholder="Elige un personaje para consultar su expediente...", min_values=1, max_values=1, options=options)10000
-async def callback(self, interaction: discord.Interaction):
+        super().__init__(placeholder="Elige un personaje para consultar su expediente...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
         seleccion = self.values[0]
         
         if seleccion == "Lükaa":
@@ -575,4 +576,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-    
