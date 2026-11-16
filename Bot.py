@@ -14,7 +14,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID de tu canal de texto para los ruidos
-TEXT_CHANNEL_ID = 1546286007308255239  
+TEXT_CHANNEL_ID = 1546286007308255234  
 
 @bot.event
 async def on_ready():
