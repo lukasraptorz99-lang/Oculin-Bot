@@ -16,8 +16,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ID del canal principal
 TEXT_CHANNEL_ID = 1546286007308255234  
 
-# Enlace limpio del GIF de Lükaa con audífonos
-LUKAA_GIF_URL = "https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&"
+# Representación visual de Oculin en texto/emoji
+OCULIN_EMOJI = "🕷️"
 
 # Lista de frases atmosféricas actualizada
 ATMOSPHERIC_MESSAGES = [
@@ -58,14 +58,12 @@ async def atmospheric_loop():
 async def on_ready():
     print(f"Sesión iniciada como: {bot.user.name} (ID: {bot.user.id})")
     
-    # Sincronizamos los comandos de barra con Discord
     try:
         synced = await bot.tree.sync()
         print(f"Se sincronizaron {len(synced)} comandos de barra.")
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
 
-    # Enviar el mensaje de encendido en cursiva
     try:
         channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
         if channel:
@@ -74,7 +72,6 @@ async def on_ready():
     except Exception as e:
         print(f"No se pudo enviar el mensaje 'se despierta': {e}")
     
-    # Iniciamos el bucle de mensajes atmosféricos
     if not atmospheric_loop.is_running():
         atmospheric_loop.start()
 
@@ -84,7 +81,6 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # Si alguien etiqueta a Oculin en el mensaje
     if bot.user.mentioned_in(message):
         try:
             emoji = discord.utils.get(message.guild.emojis, name="ahh")
@@ -113,12 +109,10 @@ async def jugar(interaction: discord.Interaction, nombre: str):
         url_juego = "https://lukasraptorz99-lang.github.io/"
         
         embed = discord.Embed(
-            title="Lükaa ocular V13",
+            title=f"{OCULIN_EMOJI} Lükaa ocular V13",
             description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
             color=0xaa0000
         )
-        
-        embed.set_thumbnail(url=LUKAA_GIF_URL)
         embed.set_footer(text="Sinteks Labs / Oculin System")
         
         await interaction.response.send_message(embed=embed, view=JuegoView(url_juego))
@@ -127,6 +121,27 @@ async def jugar(interaction: discord.Interaction, nombre: str):
             f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**. ¡Prueba escribiendo *Lükaa Ocular V13*!",
             ephemeral=True
         )
+
+# ---------------- MINIJUEGO /ALIMENTAR (TAMAGOTCHI DE LECHUGA) ----------------
+@bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
+@app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
+async def alimentar(interaction: discord.Interaction, comida: str):
+    comida_limpia = comida.strip()
+    
+    if "🥬" in comida_limpia or "lechuga" in comida_limpia.lower():
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} 🍽️ ¡Ñam... ñam!",
+            description="Oculin devora la lechuga con desesperación absoluta y emite un sonido extrañamente feliz. *¡Ha recuperado energía!*",
+            color=0x00aa00  # Verde éxito
+        )
+        await interaction.response.send_message(embed=embed)
+    else:
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} ❌ ¡Rechazado!",
+            description=f"Oculin mira fijamente tu **{comida_limpia}**, parpadea sin piedad y lo desintegra con la mirada. *¡Exige lechuga (🥬)!*",
+            color=0xaa0000  # Rojo peligro
+        )
+        await interaction.response.send_message(embed=embed)
 
 # ---------------- APAGADO ORDENADO (SHUTDOWN) ----------------
 async def graceful_shutdown(signal_name):
