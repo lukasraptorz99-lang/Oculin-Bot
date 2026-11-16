@@ -89,9 +89,8 @@ def obtener_datos_usuario(user_id: str):
             "monedas": 0,
             "objetos": [],
             "nucleos_aceleracion": 0,
-            "cantidad_oculins": 1  # Empieza con 1 Oculin por defecto
+            "cantidad_oculins": 1
         }
-    # Asegurar retrocompatibilidad si el usuario ya existía sin esta clave
     if "cantidad_oculins" not in inventarios_usuarios[user_id]:
         inventarios_usuarios[user_id]["cantidad_oculins"] = 1
     return inventarios_usuarios[user_id]
@@ -317,7 +316,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
 
     if articulo.value == "oculin_extra":
         if datos["monedas"] < 500:
-            await interaction.response.send_message(f"❌ Necesitas **500 créditos** 🪙 para clonar/comprar otro Oculin. Tienes **{datos['monedas']}** 🪙.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Necesitas **500 créditos** 🪙 para comprar otro Oculin. Tienes **{datos['monedas']}** 🪙.", ephemeral=True)
             return
             
         datos["monedas"] -= 500
@@ -400,7 +399,6 @@ async def explorar(interaction: discord.Interaction):
     resultados_texto = []
     total_creditos = 0
     
-    # Realiza una expedición por cada Oculin que posea el usuario
     for i in range(cantidad):
         nombre_objeto, inc_felicidad, inc_hambre, creditos_ganados = random.choice(hallazgos_posibles)
         estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
@@ -475,9 +473,30 @@ async def inventario(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
-@app_commands.describe(usuario="El usuario al que Oculin va a analizar
+@app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
+async def espiar(interaction: discord.Interaction, usuario: discord.Member):
+    nivel_locura = random.randint(0, 100)
+    diagnosticos = [
+        "Apto para la supervivencia en Oculus.",
+        "Riesgo moderado de mutación por radiación cuántica.",
+        "Absolutamente inestable, podría desintegrarse en cualquier momento.",
+        "Posee una extraña resistencia mental a las sombras."
+    ]
+    diagnostico = random.choice(diagnosticos)
 
-                       # ---------------- COMANDO /LORE ----------------
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 👁️ Escaneo Ocular",
+        description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
+        color=0x9b59b6
+    )
+    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
+    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
+    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
+    
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
@@ -589,4 +608,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-    
+        
