@@ -481,7 +481,7 @@ async def inventario(interaction: discord.Interaction):
     
     lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
     if len(objetos) > 10:
-        lista_objetos += f" y {len(objetos) - 10} más..
+        lista_objetos += f" y {len(objetos) - 10} más.."
         # ---------------- COMANDO /LORE ----------------
         class LoreSelectView(discord.ui.View):
     def __init__(self):
