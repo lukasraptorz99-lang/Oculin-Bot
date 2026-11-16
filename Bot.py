@@ -14,7 +14,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ID del canal principal donde Oculin enviará los mensajes automáticos
-TEXT_CHANNEL_ID = 1546286007308255239  # Cambia esto por el ID de tu canal si lo necesitas
+TEXT_CHANNEL_ID = 1546286007308255239  # ID de tu canal de texto principal
 
 # Lista de frases atmosféricas y de terror
 ATMOSPHERIC_MESSAGES = [
@@ -43,11 +43,14 @@ async def start_web_server():
 # ---------------- TAREAS Y CICLO DE VIDA ----------------
 @tasks.loop(minutes=20)
 async def atmospheric_loop():
-    channel = bot.get_channel(TEXT_CHANNEL_ID)
-    if channel:
-        import random
-        frase = random.choice(ATMOSPHERIC_MESSAGES)
-        await channel.send(frase)
+    try:
+        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+        if channel:
+            import random
+            frase = random.choice(ATMOSPHERIC_MESSAGES)
+            await channel.send(frase)
+    except Exception as e:
+        print(f"Error en el bucle atmosférico: {e}")
 
 @bot.event
 async def on_ready():
@@ -60,10 +63,14 @@ async def on_ready():
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
 
-    # Enviar el mensaje de encendido al canal principal
-    channel = bot.get_channel(TEXT_CHANNEL_ID)
-    if channel:
-        await channel.send("se despierta")
+    # Forzamos la búsqueda del canal directamente en la API de Discord para enviar "se despierta"
+    try:
+        channel = await bot.fetch_channel(TEXT_CHANNEL_ID)
+        if channel:
+            await channel.send("se despierta")
+            print("Mensaje 'se despierta' enviado exitosamente.")
+    except Exception as e:
+        print(f"No se pudo enviar el mensaje 'se despierta': {e}")
     
     # Iniciamos el bucle de mensajes atmosféricos
     if not atmospheric_loop.is_running():
@@ -89,7 +96,7 @@ async def on_message(message):
         except Exception as e:
             print(f"No se pudo reaccionar al mensaje: {e}")
 
-    # IMPORTANTE: Permite que los comandos sigan funcionando correctamente
+    # Permite que los comandos sigan funcionando correctamente
     await bot.process_commands(message)
 
 # ---------------- BOTÓN INTERACTIVO PARA EL JUEGO ----------------
@@ -109,59 +116,4 @@ async def jugar(interaction: discord.Interaction, nombre: str):
         
         embed = discord.Embed(
             title="Lükaa ocular V13",
-            description="Las sombras acechan en el servidor. Presiona el botón de abajo para entrar al juego y sobrevivir.",
-            color=0xaa0000
-        )
         
-        embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/1546286007308255234/1571712687606595635/GIF_20261102_154546_388.gif?ex=6afbbb01&is=6afa6981&hm=f949b5cfc90fdbd9f26a8d94728a547b97467a925f05d05a7919ff2561ce0b11&")
-        embed.set_footer(text="Sinteks Labs / Oculin System")
-        
-        await interaction.response.send_message(embed=embed, view=JuegoView(url_juego))
-    else:
-        await interaction.response.send_message(
-            f"Lo siento, no encontré ningún juego registrado con el nombre **'{nombre}'**. ¡Prueba escribiendo *Lükaa Ocular V13*!",
-            ephemeral=True
-        )
-
-# ---------------- APAGADO ORDENADO (SHUTDOWN) ----------------
-async def graceful_shutdown(signal_name):
-    print(f"Recibida señal {signal_name}, apagando de forma ordenada...")
-    channel = bot.get_channel(TEXT_CHANNEL_ID)
-    if channel:
-        try:
-            await channel.send("se duerme")
-            await asyncio.sleep(1)
-        except Exception as e:
-            print(f"No se pudo enviar el mensaje de cierre: {e}")
-    await bot.close()
-    sys.exit(0)
-
-def setup_signals():
-    loop = asyncio.get_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s.name)))
-
-# ---------------- PUNTO DE ENTRADA ----------------
-async def main():
-    token = os.environ.get("DISCORD_TOKEN")
-    if not token:
-        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
-        return
-
-    if sys.platform != "win32":
-        setup_signals()
-
-    web_task = asyncio.create_task(start_web_server())
-    
-    try:
-        await bot.start(token)
-    except Exception as e:
-        print(f"Error al iniciar el bot: {e}")
-    finally:
-        channel = bot.get_channel(TEXT_CHANNEL_ID)
-        if channel:
-            await channel.send("se duerme")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-    
