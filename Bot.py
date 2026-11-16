@@ -152,8 +152,8 @@ async def estado(interaction: discord.Interaction):
         saciado = "🔴 ¡Muerto de hambre! (Exige 🥬)"
 
     embed = discord.Embed(
-        title=f"{OCULIN_EMOJI} Estado de la Mascota Universal",
-        description="Diagnóstico actual del espécimen (último sobreviviente del planeta Oculus):",
+        title=f"{OCULIN_EMOJI} Estado de la criatura",
+        description="Diagnóstico actual del espécimen (de los últimos sobrevivientes del planeta Oculus):",
         color=0x7289da
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
