@@ -19,6 +19,12 @@ TEXT_CHANNEL_ID = 1546286007308255234
 # Representación visual de Oculin en texto/emoji
 OCULIN_EMOJI = "🕷️"
 
+# Estado interno del Tamagotchi de Oculin
+estado_mascota = {
+    "hambre": 50,      # De 0 (lleno) a 100 (muerto de hambre)
+    "felicidad": 50    # De 0 (triste/enojado) a 100 (muy feliz)
+}
+
 # Lista de frases atmosféricas actualizada
 ATMOSPHERIC_MESSAGES = [
     "*chillido extraño*",
@@ -122,6 +128,51 @@ async def jugar(interaction: discord.Interaction, nombre: str):
             ephemeral=True
         )
 
+# ---------------- COMANDO /ESTADO (VER TAMAGOTCHI) ----------------
+@bot.tree.command(name="estado", description="Muestra el estado de ánimo y hambre de Oculin.")
+async def estado(interaction: discord.Interaction):
+    hambre = estado_mascota["hambre"]
+    felicidad = estado_mascota["felicidad"]
+    
+    # Definir texto según la felicidad
+    if felicidad > 75:
+        animo = "😁 Muy feliz (¡Cuidado, podría estar planeando algo!)"
+    elif felicidad > 40:
+        animo = "😐 Neutral (Mirando fijamente al vacío)"
+    else:
+        animo = "💀 Deprimido / Enojado (Emite chillidos de frustración)"
+
+    # Definir texto según el hambre
+    if hambre < 30:
+        saciado = "🟢 Saciado (Comió suficiente lechuga)"
+    elif hambre < 70:
+        saciado = "🟡 Con algo de apetito"
+    else:
+        saciado = "🔴 ¡Muerto de hambre! (Exige 🥬)"
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} Estado del Sistema Ocular",
+        description="Diagnóstico actual de la criatura:",
+        color=0x7289da
+    )
+    embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
+    embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
+    embed.set_footer(text="Usa /alimentar con 🥬 y /acariciar para cambiar su estado.")
+    
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- COMANDO /ACARICIAR ----------------
+@bot.tree.command(name="acariciar", description="Dale mimos a Oculin para aumentar su felicidad.")
+async def acariciar(interaction: discord.Interaction):
+    estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 15)
+    
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} ✨ ¡Acariciado!",
+        description="Le das palmaditas con cuidado. Oculin emite un zumbido extrañamente tierno y sus múltiples ojos brillan satisfechos. *¡Su felicidad ha aumentado!*",
+        color=0x00aa00
+    )
+    await interaction.response.send_message(embed=embed)
+
 # ---------------- MINIJUEGO /ALIMENTAR (TAMAGOTCHI DE LECHUGA) ----------------
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
 @app_commands.describe(comida="¿Qué objeto o alimento le vas a dar?")
@@ -129,17 +180,22 @@ async def alimentar(interaction: discord.Interaction, comida: str):
     comida_limpia = comida.strip()
     
     if "🥬" in comida_limpia or "lechuga" in comida_limpia.lower():
+        estado_mascota["hambre"] = max(0, estado_mascota["hambre"] - 35)
+        estado_mascota["felicidad"] = min(100, estado_mascota["felicidad"] + 10)
+        
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} 🍽️ ¡Ñam... ñam!",
-            description="Oculin devora la lechuga con desesperación absoluta y emite un sonido extrañamente feliz. *¡Ha recuperado energía!*",
-            color=0x00aa00  # Verde éxito
+            description="Oculin devora la lechuga con desesperación absoluta y emite un sonido extrañamente feliz. *¡Hambre reducida y energía recuperada!*",
+            color=0x00aa00
         )
         await interaction.response.send_message(embed=embed)
     else:
+        estado_mascota["felicidad"] = max(0, estado_mascota["felicidad"] - 10)
+        
         embed = discord.Embed(
             title=f"{OCULIN_EMOJI} ❌ ¡Rechazado!",
-            description=f"Oculin mira fijamente tu **{comida_limpia}**, parpadea sin piedad y lo desintegra con la mirada. *¡Exige lechuga (🥬)!*",
-            color=0xaa0000  # Rojo peligro
+            description=f"Oculin mira fijamente tu **{comida_limpia}**, parpadea sin piedad y lo desintegra con la mirada. *¡Se ha enojado un poco! Exige lechuga (🥬).*",
+            color=0xaa0000
         )
         await interaction.response.send_message(embed=embed)
 
