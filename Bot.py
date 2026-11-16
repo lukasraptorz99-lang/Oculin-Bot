@@ -474,4 +474,4 @@ async def shutdown():
             await channel.send("*se duerme*")
             await asyncio.sleep(1)
     except Exception as e:
-        print(f"No se pudo enviar el mens
+        print(f"No se pudo enviar el mensaje")
