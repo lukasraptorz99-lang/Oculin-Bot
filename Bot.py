@@ -12,12 +12,11 @@ from aiohttp import web
 
 # ---------------- CONFIGURACIÓN DEL BOT ----------------
 intents = discord.Intents.default()
-# Se desactiva message_content tal como se recomendó (las menciones funcionan igual)
 
 TEXT_CHANNEL_ID = 1571922687708897290  
 OCULIN_EMOJI = "🕷️"
 
-# Credenciales de Upstash Redis (Leyendo estrictamente de variables de entorno)
+# Credenciales de Upstash Redis
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
@@ -30,10 +29,8 @@ estado_mascota = {
 # Almacén de inventarios y núcleos por usuario en memoria
 inventarios_usuarios = {}
 
-# Sesión HTTP global para optimizar conexiones con Upstash y evitar abrirlas/cerrarlas constantemente
 http_session: aiohttp.ClientSession = None
 
-# Flag para control de guardado pendiente (Debounce) y evitar spam a Upstash
 estado_modificado = False
 ya_se_desperto = False
 
@@ -96,7 +93,6 @@ def obtener_datos_usuario(user_id: str):
     return inventarios_usuarios[user_id]
 
 def cooldown_segundos(datos: dict) -> float:
-    """Calcula los segundos de cooldown basados en los núcleos de aceleración (base 30s, reducción 25%, mínimo 1.0s)."""
     nucleos = datos.get("nucleos_aceleracion", 0)
     cd = 30.0
     for _ in range(nucleos):
@@ -181,7 +177,6 @@ async def decaer_estado():
 
 @tasks.loop(seconds=30)
 async def guardado_automatico():
-    """Sistema de guardado con Debounce: solo guarda en Upstash si hubo cambios reales."""
     if estado_modificado:
         await guardar_estado_nube()
 
@@ -275,7 +270,7 @@ async def estado(interaction: discord.Interaction):
     )
     embed.add_field(name="Felicidad", value=f"{felicidad}/100\n{animo}", inline=False)
     embed.add_field(name="Hambre", value=f"{hambre}/100\n{saciado}", inline=False)
-    embed.set_footer(text="Usa /inventario para ver tus monedas y objetos.")
+    embed.set_footer(text="Usa /inventario para ver tus créditos y objetos.")
     
     await interaction.response.send_message(embed=embed)
 
@@ -298,7 +293,7 @@ async def acariciar(interaction: discord.Interaction):
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
     app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
     app_commands.Choice(name="Batería nuclear barata", value="bateria"),
-    app_commands.Choice(name="Núcleo de Aceleración (100 monedas - Reduce CD 25%)", value="nucleo")
+    app_commands.Choice(name="Núcleo de Aceleración (100 créditos - Reduce CD 25%)", value="nucleo")
 ])
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice[str]):
@@ -312,7 +307,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
             return
 
         if datos["monedas"] < 100:
-            await interaction.response.send_message(f"❌ No tienes suficientes monedas. Tienes **{datos['monedas']}** 🪙 y necesitas **100** 🪙.", ephemeral=True)
+            await interaction.response.send_message(f"❌ No tienes suficientes créditos. Tienes **{datos['monedas']}** 🪙 y necesitas **100** 🪙.", ephemeral=True)
             return
             
         datos["monedas"] -= 100
@@ -329,7 +324,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         return
 
     if datos["monedas"] < 50:
-        await interaction.response.send_message(f"❌ Este accesorio cuesta **50 monedas** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
+        await interaction.response.send_message(f"❌ Este accesorio cuesta **50 créditos** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
         return
 
     datos["monedas"] -= 50
@@ -348,7 +343,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         description=descripciones[articulo.value],
         color=0xffaa00
     )
-    embed.set_footer(text="¡Felicidad incrementada, 50 monedas gastadas y objeto añadido a tu inventario!")
+    embed.set_footer(text="¡Felicidad incrementada, 50 créditos gastados y objeto añadido a tu inventario!")
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="alimentar", description="Dale de comer a Oculin (solo le gusta la lechuga 🥬).")
@@ -392,24 +387,24 @@ async def explorar(interaction: discord.Interaction):
         ("✨ Mineral brillante de Oculus", 20, 0, 50)
     ]
     
-    nombre_objeto, inc_felicidad, inc_hambre, monedas_ganadas = random.choice(hallazgos)
+    nombre_objeto, inc_felicidad, inc_hambre, creditos_ganados = random.choice(hallazgos)
     
     estado_mascota["felicidad"] = clamp(estado_mascota["felicidad"] + inc_felicidad)
     estado_mascota["hambre"] = clamp(estado_mascota["hambre"] + inc_hambre)
     
-    datos["monedas"] += monedas_ganadas
+    datos["monedas"] += creditos_ganados
     datos["objetos"].append(nombre_objeto)
     marcar_cambio()
 
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 🛰️ Expedición Planetaria",
-        description=f"Oculin despliega sus alas y regresa del vacío trayendo botín.\n\n**Encontraste:** {nombre_objeto}\n💰 Has ganado **+{monedas_ganadas} monedas**.",
+        description=f"Oculin despliega sus alas y regresa del vacío trayendo botín.\n\n**Encontraste:** {nombre_objeto}\n💰 Has ganado **+{creditos_ganados} créditos**.",
         color=0x3498db
     )
     embed.set_footer(text="Usa /vender para comercializar tus hallazgos o /inventario.")
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="vender", description="Vende los objetos y chatarra que has encontrado explorando a cambio de monedas.")
+@bot.tree.command(name="vender", description="Vende los objetos y chatarra que has encontrado explorando a cambio de créditos.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def vender(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
@@ -427,17 +422,18 @@ async def vender(interaction: discord.Interaction):
     
     embed = discord.Embed(
         title=f"{OCULIN_EMOJI} 💰 Comercio Intergaláctico",
-        description=f"Has vendido toda tu chatarra acumulada en el mercado negro de Oculus.\n\n✨ Total entregado: **{len(objetos)} objetos**\n💵 Ganancia neta: **+{ganancia_total} monedas**",
+        description=f"Has vendido toda tu chatarra acumulada en el mercado negro de Oculus.\n\n✨ Total entregado: **{len(objetos)} objetos**\n💵 Ganancia neta: **+{ganancia_total} créditos**",
         color=0xf1c40f
     )
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="inventario", description="Muestra tus monedas, núcleos de aceleración y objetos recolectados.")
+@bot.tree.command(name="inventario", description="Muestra tus créditos, núcleos de aceleración y objetos recolectados.")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def inventario(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
     
-    monedas = datos.get("monedas", 0)
+    creditos = datos.get("monedas", 0)
     nucleos = datos.get("nucleos_aceleracion", 0)
     objetos = datos.get("objetos", [])
     cd_actual = cooldown_segundos(datos)
@@ -451,11 +447,11 @@ async def inventario(interaction: discord.Interaction):
         description="Estado de tus recursos en la red de Oculus:",
         color=0x2ecc71
     )
-    embed.add_field(name="Monedas", value=f"{monedas} 🪙", inline=True)
+    embed.add_field(name="Créditos", value=f"{creditos} 🪙", inline=True)
     embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
     embed.add_field(name="Cooldown Actual de Comandos", value=f"{cd_actual}s", inline=True)
     embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
-    embed.set_footer(text="Usa /vender para cambiar la chatarra por monedas o /tienda para mejorar tu equipo.")
+    embed.set_footer(text="Usa /vender para cambiar la chatarra por créditos o /tienda para mejorar tu equipo.")
     
     await interaction.response.send_message(embed=embed)
 
