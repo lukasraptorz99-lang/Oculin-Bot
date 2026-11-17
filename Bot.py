@@ -524,7 +524,116 @@ async def espiar(interaction: discord.Interaction, usuario: discord.Member):
     embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
     
     await interaction.response.send_message(embed=embed)
+    
+@bot.tree.command(name="regalar", description="Transfiere créditos, un objeto de tu inventario o un Oculin a otro usuario.")
+@app_commands.describe(
+    usuario="El usuario al que deseas hacerle el regalo",
+    tipo="¿Qué deseas regalar?",
+    cantidad_o_nombre="Cantidad de créditos (número), nombre exacto del objeto o escribe 'oculin'"
+)
+@app_commands.choices(tipo=[
+    app_commands.Choice(name="Créditos (🪙)", value="creditos"),
+    app_commands.Choice(name="Objeto de la chatarra", value="objeto"),
+    app_commands.Choice(name="Oculin de la flota (🕷️)", value="oculin")
+])
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
+async def regalar(interaction: discord.Interaction, usuario: discord.Member, tipo: app_commands.Choice[str], cantidad_o_nombre: str):
+    await interaction.response.defer(ephemeral=False)
+    
+    # Evitar regalarse a uno mismo
+    if usuario.id == interaction.user.id:
+        await interaction.followup.send("❌ ¡No puedes hacerte un regalo a ti mismo!", ephemeral=True)
+        return
+        
+    if usuario.bot:
+        await interaction.followup.send("❌ No puedes regalarle nada a un bot de Discord.", ephemeral=True)
+        return
 
+    remitente_id = str(interaction.user.id)
+    destinatario_id = str(usuario.id)
+    
+    datos_remitente = obtener_datos_usuario(remitente_id)
+    datos_destinatario = obtener_datos_usuario(destinatario_id)
+    
+    # --- CASO 1: REGALAR CRÉDITOS ---
+    if tipo.value == "creditos":
+        try:
+            cantidad = int(cantidad_o_nombre)
+        except ValueError:
+            await interaction.followup.send("❌ Debes escribir un número válido de créditos a regalar.", ephemeral=True)
+            return
+            
+        if cantidad <= 0:
+            await interaction.followup.send("❌ La cantidad debe ser mayor a 0.", ephemeral=True)
+            return
+            
+        if datos_remitente.get("monedas", 0) < cantidad:
+            await interaction.followup.send(f"❌ No tienes suficientes créditos. Tienes **{datos_remitente.get('monedas', 0)}** 🪙.", ephemeral=True)
+            return
+            
+        # Realizar la transferencia
+        datos_remitente["monedas"] -= cantidad
+        datos_destinatario["monedas"] = datos_destinatario.get("monedas", 0) + cantidad
+        marcar_cambio()
+        
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} 🎁 ¡Regalo de Créditos!",
+            description=f"**{interaction.user.display_name}** le ha regalado **{cantidad} créditos (🪙)** a **{usuario.mention}**.",
+            color=0xf1c40f
+        )
+        await interaction.followup.send(embed=embed)
+
+    # --- CASO 2: REGALAR OBJETO ---
+    elif tipo.value == "objeto":
+        inventario_remitente = datos_remitente.get("objetos", [])
+        
+        # Buscar el objeto (coincidencia flexible o exacta)
+        objeto_encontrado = None
+        for obj in inventario_remitente:
+            if cantidad_o_nombre.lower() in obj.lower():
+                objeto_encontrado = obj
+                break
+                
+        if not objeto_encontrado:
+            await interaction.followup.send(f"❌ No tienes ningún objeto parecido a '**{cantidad_o_nombre}**' en tu inventario.", ephemeral=True)
+            return
+            
+        # Transferir objeto
+        inventario_remitente.remove(objeto_encontrado)
+        if "objetos" not in datos_destinatario:
+            datos_destinatario["objetos"] = []
+        datos_destinatario["objetos"].append(objeto_encontrado)
+        marcar_cambio()
+        
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} 🎁 ¡Objeto Transferido!",
+            description=f"**{interaction.user.display_name}** le ha regalado el objeto **{objeto_encontrado}** a **{usuario.mention}**.",
+            color=0x2ecc71
+        )
+        await interaction.followup.send(embed=embed)
+
+    # --- CASO 3: REGALAR OCULIN ---
+    elif tipo.value == "oculin":
+        oculins_remitente = datos_remitente.get("cantidad_oculins", 1)
+        
+        if oculins_remitente <= 1:
+            await interaction.followup.send("❌ ¡No puedes regalar tu único Oculin! Debes tener al menos 2 para conservar uno en tu flota.", ephemeral=True)
+            return
+            
+        # Transferir un Oculin
+        datos_remitente["cantidad_oculins"] -= 1
+        datos_destinatario["cantidad_oculins"] = datos_destinatario.get("cantidad_oculins", 1) + 1
+        marcar_cambio()
+        
+        embed = discord.Embed(
+            title=f"{OCULIN_EMOJI} 🎁 ¡Espécimen Reubicado!",
+            description=f"**{interaction.user.display_name}** ha transferido un Oculin de su flota a la custodia de **{usuario.mention}**.\n\n"
+                        f"• Oculins de {interaction.user.display_name}: **{datos_remitente['cantidad_oculins']}** 🕷️\n"
+                        f"• Oculins de {usuario.display_name}: **{datos_destinatario['cantidad_oculins']}** 🕷️",
+            color=0x9b59b6
+        )
+        await interaction.followup.send(embed=embed)
+        
 # ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
