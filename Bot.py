@@ -483,8 +483,7 @@ async def inventario(interaction: discord.Interaction):
     objetos = datos.get("objetos", [])
     cd_actual = cooldown_segundos(datos)
     
-    lista_objetos = ", ".join(objetos[:10])
-    if objetos else "Ninguno"
+    lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
     if len(objetos) > 10:
         lista_objetos += f" y {len(objetos) - 10} más..."
 
