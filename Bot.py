@@ -117,7 +117,7 @@ ATMOSPHERIC_MESSAGES = [
     "*Empieza a volar por ahí*",
     "Wuahhh",
     "¡Recuerde: un Oculin feliz es un hogar seguro a prueba de explosiones planetarias!",
-    "¡La mascota oficial del extinto planeta Oculus directo a tu consola!",
+    "¡La mascota oficial del extinto planeta Oculus directo tu consola!",
     "¡No alimente a su Oculin con productos no autorizados o la garantía universal quedará anulada!"
 ]
 
@@ -409,6 +409,8 @@ async def alimentar(interaction: discord.Interaction, comida: str):
 @bot.tree.command(name="explorar", description="Manda a tus Oculins a buscar chatarra y ruinas del extinto planeta Oculus en paralelo.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def explorar(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False)
+    
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
     cantidad = datos.get("cantidad_oculins", 1)
@@ -441,7 +443,7 @@ async def explorar(interaction: discord.Interaction):
         color=0x3498db
     )
     embed.set_footer(text="Usa /vender para comercializar tus hallazgos o /inventario.")
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="vender", description="Vende los objetos y chatarra que han encontrado tus Oculins a cambio de créditos.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
@@ -469,6 +471,8 @@ async def vender(interaction: discord.Interaction):
 @bot.tree.command(name="inventario", description="Muestra tus créditos, cantidad de Oculins, núcleos y objetos.")
 @app_commands.checks.dynamic_cooldown(calcular_cooldown)
 async def inventario(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False)
+    
     user_id = str(interaction.user.id)
     datos = obtener_datos_usuario(user_id)
     
@@ -479,10 +483,50 @@ async def inventario(interaction: discord.Interaction):
     objetos = datos.get("objetos", [])
     cd_actual = cooldown_segundos(datos)
     
-    lista_objetos = ", ".join(objetos[:10]) if objetos else "Ninguno"
+    lista_objetos = ", ".join(objetos[:10])
+    if objetos else "Ninguno"
     if len(objetos) > 10:
-        lista_objetos += f" y {len(objetos) - 10} más.."
-     # ---------------- COMANDO /LORE ----------------
+        lista_objetos += f" y {len(objetos) - 10} más..."
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 🎒 Inventario de {interaction.user.display_name}",
+        description=f"Estado de recursos (Nombre del Oculin: **{nombre_oc}**):",
+        color=0x2ecc71
+    )
+    embed.add_field(name="Créditos", value=f"{creditos} 🪙", inline=True)
+    embed.add_field(name="Oculins en propiedad", value=f"{cantidad_oculins} 🕷️", inline=True)
+    embed.add_field(name="Núcleos de Aceleración", value=f"{nucleos} ⚡", inline=True)
+    embed.add_field(name="Cooldown Actual", value=f"{cd_actual}s", inline=True)
+    embed.add_field(name="Chatarra / Objetos en posesión", value=lista_objetos, inline=False)
+    embed.set_footer(text="Usa /vender, /renombrar o /tienda para gestionar tu imperio.")
+    
+    await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="espiar", description="Oculin fija todos sus ojos en un usuario para hacerle un diagnóstico psicobiótico.")
+@app_commands.describe(usuario="El usuario al que Oculin va a analizar con sus múltiples ojos")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
+async def espiar(interaction: discord.Interaction, usuario: discord.Member):
+    nivel_locura = random.randint(0, 100)
+    diagnosticos = [
+        "Apto para la supervivencia en Oculus.",
+        "Riesgo moderado de mutación por radiación cuántica.",
+        "Absolutamente inestable, podría desintegrarse en cualquier momento.",
+        "Posee una extraña resistencia mental a las sombras."
+    ]
+    diagnostico = random.choice(diagnosticos)
+
+    embed = discord.Embed(
+        title=f"{OCULIN_EMOJI} 👁️ Escaneo Ocular",
+        description=f"Oculin clava sus múltiples ojos en **{usuario.mention}** durante varios segundos...",
+        color=0x9b59b6
+    )
+    embed.add_field(name="Índice de Locura Ocular", value=f"{nivel_locura}%", inline=False)
+    embed.add_field(name="Diagnóstico del espécimen", value=diagnostico, inline=False)
+    embed.set_footer(text="Sistema de vigilancia intergaláctica Oculin.")
+    
+    await interaction.response.send_message(embed=embed)
+
+# ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
@@ -594,4 +638,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-        
