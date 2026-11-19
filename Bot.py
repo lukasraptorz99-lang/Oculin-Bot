@@ -307,6 +307,8 @@ async def renombrar(interaction: discord.Interaction, oculin: str):
     app_commands.Choice(name="Sombrero de copa invisible", value="sombrero"),
     app_commands.Choice(name="Gafas de sol de alta definición", value="gafas"),
     app_commands.Choice(name="Batería nuclear barata", value="bateria"),
+    app_commands.Choice(name="Cubo Rubik tridimensional (50 🪙)", value="rubik"),
+    app_commands.Choice(name="Ghast seco de Minecraft (50 🪙)", value="ghast"),
     app_commands.Choice(name="Núcleo de Aceleración (100 créditos - Reduce CD 25%)", value="nucleo"),
     app_commands.Choice(name="Oculin de Repuesto (500 créditos - Permite explorar en paralelo)", value="oculin_extra")
 ])
@@ -356,7 +358,7 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
         return
 
     if datos["monedas"] < 50:
-        await interaction.response.send_message(f"❌ Este accesorio cuesta **50 créditos** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
+        await interaction.response.send_message(f"❌ Este artículo cuesta **50 créditos** 🪙 y tú tienes **{datos['monedas']}** 🪙.", ephemeral=True)
         return
 
     datos["monedas"] -= 50
@@ -367,7 +369,9 @@ async def tienda(interaction: discord.Interaction, articulo: app_commands.Choice
     descripciones = {
         "sombrero": "¡Has equipado un sombrero de copa totalmente invisible! Nadie lo ve, pero Oculin camina con elegancia intergaláctica.",
         "gafas": "Le colocas unas gafas de sol de alta definición sobre sus múltiples ojos. Estilo moderno activado.",
-        "bateria": "Le das una batería nuclear barata para que juegue. Emana un brillo radioactivo, ¡y le encanta!"
+        "bateria": "Le das una batería nuclear barata para que juegue. Emana un brillo radioactivo, ¡y le encanta!",
+        "rubik": "Adquieres un cubo Rubik del Sitio-19. Oculin lo resuelve en 0.2 segundos mientras mira fijamente a la nada con sus conocimientos expandidos.",
+        "ghast": "Consigues un mini Ghast seco de Minecraft. No vuela ni dispara bolas de fuego, pero hace ruiditos tristes muy tiernos cuando se sacude."
     }
     
     embed = discord.Embed(
