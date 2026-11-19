@@ -637,7 +637,25 @@ async def regalar(interaction: discord.Interaction, usuario: discord.Member, tip
             color=0x9b59b6
         )
         await interaction.followup.send(embed=embed)
-        
+
+@bot.tree.command(name="hablar", description="Haz que Oculin diga un mensaje en el canal.")
+@app_commands.describe(mensaje="Lo que quieres que diga Oculin")
+@app_commands.checks.dynamic_cooldown(calcular_cooldown)
+async def hablar(interaction: discord.Interaction, mensaje: str):
+    texto_limpio = mensaje.strip()
+    if not texto_limpio:
+        await interaction.response.send_message("❌ Escribe algún mensaje para que Oculin pueda hablar.", ephemeral=True)
+        return
+
+    if len(texto_limpio) > 1000:
+        await interaction.response.send_message("❌ El mensaje es muy largo (máximo 1000 caracteres).", ephemeral=True)
+        return
+
+    # Evita que se disparen menciones masivas accidentalmente
+    allowed_mentions = discord.AllowedMentions(everyone=False, roles=False, users=True)
+    await interaction.channel.send(texto_limpio, allowed_mentions=allowed_mentions)
+    await interaction.response.send_message("✅ Mensaje enviado.", ephemeral=True)
+    
 # ---------------- COMANDO /LORE ----------------
 class LoreSelectView(discord.ui.View):
     def __init__(self):
